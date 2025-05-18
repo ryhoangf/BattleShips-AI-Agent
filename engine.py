@@ -57,5 +57,61 @@ class Player:
         for row in range(10):
             print(" ". join(indexes[(row-1)*10:row*10]))
 
-p = Player()
-p.show_ships()
+#p = Player()
+#p.show_ships()
+
+class Game:
+    def __init__(self, human1, human2):
+        self.human1 = human1
+        self.human2 = human2
+        self.player1 = Player()
+        self.player2 = Player()
+        self.player1_turn = True
+        self.computer_turn = True if not self.human1 else False
+        self.over = False
+        self.result = None
+    
+    def make_move(self, i):
+        player = self.player1 if self.player1_turn else self.player2
+        opponent = self.player2 if self.player1_turn else self.player1
+        hit = False
+        
+        #set miss (M) or hit (H)
+        if i in opponent.indexes:
+            player.search[i] ="H"
+            hit = True
+            #check ship is sunk (S)
+            for ship in opponent.ships:
+                sunk = True
+                for i in ship.indexes:
+                    if player.search[i] == "U":
+                        sunk = False
+                        break
+                if sunk:
+                    for i in ship.indexes:
+                        player.search[i] = "S"
+        else:
+            player.search[i] = "M"
+        
+        #check game over     
+        gameover = True
+        for i in opponent.indexes:
+            if player.search[i] == "U":
+                gameover = False
+        self.over = gameover
+        self.result = 1 if self.player1_turn else 2
+        
+        #switch turn
+        if not hit:
+            self.player1_turn = not self.player1_turn
+            
+            #switch between human and computer
+            if (self.human1 and not self.human2) or (not self.human1 and self.human2):
+                self.computer_turn = not self.computer_turn
+            
+    def random_ai(self):
+        search = self.player1.search if self.player1_turn else self.player2.search
+        unknown = [i for i, square in enumerate(search) if square == "U"]
+        if len(unknown) >0:
+            random_index = random.choice(unknown)
+            self.make_move(random_index)
