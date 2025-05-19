@@ -66,14 +66,14 @@ while animating:
             animating = False
         
         #user click on mouse
-        if event.type == pygame.MOUSEBUTTONDOWN:
+        if event.type == pygame.MOUSEBUTTONDOWN and not game.over:
             x, y = pygame.mouse.get_pos()
-            if not game.over and game.player1_turn and x < SQSIZE * 10 and y < SQSIZE*10:
+            if game.player1_turn and x < SQSIZE * 10 and y < SQSIZE*10:
                 row = y //SQSIZE
                 col = x//SQSIZE
                 index = row *10 + col
                 game.make_move(index)
-            elif not game.over and not game.player1_turn and x > WIDTH -SQSIZE*10 and y> SQSIZE*10 + V_MARGIN:
+            elif not game.player1_turn and x > WIDTH -SQSIZE*10 and y> SQSIZE*10 + V_MARGIN:
                 row = (y- SQSIZE*10 - V_MARGIN) //SQSIZE
                 col = (x - SQSIZE*10 - H_MARGIN)//SQSIZE
                 index = row *10 + col
@@ -102,8 +102,13 @@ while animating:
         
         #computer moves
         if not game.over and game.computer_turn:
-            game.random_ai()
-        
+            #chỗ này có thể thay đổi logic để xem các thuật toán random và basic thuật toán nào tốt hơn
+            # if game.player1_turn:
+            #     game.random_ai
+            # else:
+            #     game.basic_ai()
+            game.basic_ai()
+            
         #game over
         if game.over:
             text = "Player " + str(game.result) + " win!"
