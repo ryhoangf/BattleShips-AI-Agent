@@ -103,12 +103,11 @@ while animating:
         #computer moves
         if not game.over and game.computer_turn:
             #chỗ này có thể thay đổi logic để xem các thuật toán random và basic thuật toán nào tốt hơn
-            # if game.player1_turn:
-            #     game.random_ai
-            # else:
-            #     game.basic_ai()
-            game.basic_ai()
-            
+            if game.player1_turn:
+                game.random_ai()
+            else:
+                game.basic_ai()
+            # game.basic_ai()
         #game over
         if game.over:
             text = "Player " + str(game.result) + " win!"
