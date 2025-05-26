@@ -1,0 +1,16 @@
+
+
+
+--- AI Analysis ---: Đây là tiêu đề cho biết phần thông tin này đến từ AI phân tích.
+Opponent Ships Left: 5, 4, 3, 3, 2:
+Cách hoạt động của AI: Vì P1 chưa bắn phát nào vào lưới của P2 (lưới P1 Search trống trơn, không có ô "M" - Miss hay "S" - Sunk), AI không có thông tin nào để suy luận rằng P2 đã mất tàu nào.
+Kết luận của AI: Do đó, AI kết luận rằng P2 (đối thủ của P1) vẫn còn nguyên vẹn tất cả các tàu ban đầu. Trong Battleship tiêu chuẩn, đó là: một tàu sân bay (5 ô), một tàu chiến (4 ô), một tàu tuần dương (3 ô), một tàu ngầm (3 ô), và một tàu khu trục (2 ô). Danh sách được sắp xếp giảm dần cho dễ đọc.
+Ý nghĩa cho người chơi P1: P1 biết rằng mình cần phải tìm tất cả 5 con tàu này của P2.
+Hottest Unknown: E5 (Heat: 34):
+Cách hoạt động của AI:
+AI đã thực hiện tính toán "heat map" trên lưới tìm kiếm của P1 (lưới 10x10 trống hoàn toàn các ô "U" - Unknown).
+Nó đã thử đặt tất cả các tổ hợp tàu còn lại của P2 (là toàn bộ đội tàu: [5, 4, 3, 3, 2]) vào mọi vị trí và hướng có thể trên lưới trống đó.
+Mỗi khi một vị trí đặt tàu hợp lệ, các ô "U" mà con tàu đó chiếm giữ sẽ được tăng điểm "heat".
+Sau khi thử tất cả các khả năng, AI tìm ra ô "U" có tổng điểm "heat" cao nhất.
+Kết luận của AI: Ô "E5" (Cột E, hàng 5) là ô chưa bắn có điểm "heat" cao nhất là 34.
+Ý nghĩa cho người chơi P1: Theo tính toán của AI, nếu P1 bắn vào ô E5, đó là phát bắn có "xác suất tiềm năng" cao nhất để trúng một phần của một con tàu nào đó của P2, dựa trên tất cả các cách mà toàn bộ đội tàu của P2 có thể được sắp xếp trên một bàn cờ trống. Các ô ở trung tâm hoặc gần trung tâm thường có heat cao hơn ban đầu vì chúng có nhiều khả năng bị các tàu lớn hơn đi qua khi đặt ngẫu nhiên. Giá trị "Heat: 34" là một con số tương đối, cho biết mức độ "nóng" của ô đó so với các ô khác.
