@@ -259,8 +259,10 @@ def run_game_loop(human1, human2, ai1_name=None, ai2_name=None):
             draw_grid(game.player1,*grid_map["p1_ships"],search=False)
             draw_grid(game.player2,*grid_map["p2_search"],search=True,is_active_player_grid=not game.player1_turn)
             
-            if game.human1 or game.over: draw_ships(game.player1,*grid_map["p1_ships"])
-            if game.human2 or game.over: draw_ships(game.player2,*grid_map["p2_ships"])
+            is_aivai_mode = not game.human1 and not game.human2
+            
+            if game.human1 or game.over or is_aivai_mode: draw_ships(game.player1,*grid_map["p1_ships"])
+            if game.human2 or game.over or is_aivai_mode: draw_ships(game.player2,*grid_map["p2_ships"])
 
             is_h_turn = (game.human1 and game.player1_turn) or (game.human2 and not game.player1_turn)
 
