@@ -119,9 +119,9 @@ def main_menu():
 
     buttons = {
         "pve": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options, button_width, button_height), "Player vs AI"),
-        "pvp_human": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + button_height + spacing, button_width, button_height), "Player vs Player"),
-        "aivai": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 2 * (button_height + spacing), button_width, button_height), "AI vs AI"),
-        "exit": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 3 * (button_height + spacing) + int(spacing*1.5), button_width, button_height), # Position Exit button lower
+        # "pvp_human": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + button_height + spacing, button_width, button_height), "Player vs Player"),
+        "aivai": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + (button_height + spacing), button_width, button_height), "AI vs AI"),
+        "exit": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 2 * (button_height + spacing) + int(spacing*1.5), button_width, button_height), # Position Exit button lower
                        "Exit Game", color=EXIT_BUTTON_COLOR, hover_color=EXIT_BUTTON_HOVER_COLOR)
     }
     
@@ -145,8 +145,8 @@ def main_menu():
                         chosen_ai_for_pve = select_pve_ai_difficulty()
                         if chosen_ai_for_pve: # If a difficulty was selected (not backed out)
                             launch_game(True, False, None, chosen_ai_for_pve)
-                    elif key == "pvp_human":
-                        launch_game(True, True) 
+                    # elif key == "pvp_human":
+                    #     launch_game(True, True) 
                     elif key == "aivai":
                         selected_ai1 = select_ai("Select AI for Computer 1") # Changed title
                         if selected_ai1:
