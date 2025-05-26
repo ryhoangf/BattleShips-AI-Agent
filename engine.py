@@ -1,19 +1,16 @@
-# engine.py
 import random
 
 class Ship:
     def __init__(self, size):
         self.size = size
-        # *** FIX: Assign orientation BEFORE using it ***
-        self.orientation = random.choice(["h", "v"]) # Assign orientation first
+        self.orientation = random.choice(["h", "v"]) 
 
-        # Now determine row and col based on the assigned orientation and size
         if self.orientation == "h":
-            self.row = random.randrange(0, 10) # 0 to 9
-            self.col = random.randrange(0, 10 - size + 1) # Ensure horizontal ship fits
+            self.row = random.randrange(0, 10) 
+            self.col = random.randrange(0, 10 - size + 1) 
         else: # orientation == "v"
-            self.row = random.randrange(0, 10 - size + 1) # Ensure vertical ship fits
-            self.col = random.randrange(0, 10) # 0 to 9
+            self.row = random.randrange(0, 10 - size + 1) 
+            self.col = random.randrange(0, 10) 
         
         self.indexes = self.compute_indexes()
 
@@ -38,91 +35,58 @@ class Player:
             attempts = 0
             while not placed and attempts < 200: 
                 attempts += 1
-                
-                # Create a fully initialized temporary Ship object to test placement
-                # This Ship object will have its orientation set correctly in its own __init__
-                # The size passed here is the current 'size' we are trying to place
                 temp_ship_for_placement = Ship(size) 
-                current_ship_indexes = temp_ship_for_placement.indexes # Get indexes from the temp ship
+                current_ship_indexes = temp_ship_for_placement.indexes
 
                 possible = True
-                if not current_ship_indexes: # Should not happen if Ship.__init__ is correct
-                    possible = False
+                if not current_ship_indexes: possible = False
                 
-                # Check if all indexes are valid and don't overlap
                 if possible:
                     for index in current_ship_indexes:
-                        if not (0 <= index < 100): # Boundary check
-                            possible = False
-                            break
+                        if not (0 <= index < 100): possible = False; break
                         for existing_ship in self.ships:
-                            if index in existing_ship.indexes:
-                                possible = False
-                                break
-                        if not possible:
-                            break
+                            if index in existing_ship.indexes: possible = False; break
+                        if not possible: break
                 
                 if possible:
-                    # If placement is valid, add the temp_ship_for_placement itself
                     self.ships.append(temp_ship_for_placement)
                     placed = True
             if not placed:
                 print(f"Warning: Could not place ship of size {size} after {attempts} attempts.")
 
-
-    def show_ships(self): # For debugging
+    def show_ships(self):
         indexes_display  = ["-" for _ in range (100)]
-        for i_idx in self.indexes: # Renamed i to i_idx
-            if 0 <= i_idx < 100:
-                 indexes_display[i_idx] = "X"
-        for r_idx in range(10): # Renamed r to r_idx
+        for i_idx in self.indexes:
+            if 0 <= i_idx < 100: indexes_display[i_idx] = "X"
+        for r_idx in range(10):
             print(" ".join(indexes_display[r_idx*10 : (r_idx+1)*10]))
 
     def get_remaining_ship_sizes(self, search_grid_of_opponent):
         current_remaining_sizes = []
-        # Get initial sizes from the ships actually placed for this player
         for ship_obj in self.ships:
             current_remaining_sizes.append(ship_obj.size)
-
-        sunk_ships_accounted_for_indices = set() # Store indices of ships already counted as sunk
-
+        sunk_ships_accounted_for_indices = set()
         for i, ship in enumerate(self.ships):
-            if i in sunk_ships_accounted_for_indices:
-                continue 
-            
+            if i in sunk_ships_accounted_for_indices: continue 
             is_fully_sunk = True
-            if not ship.indexes: # Should not happen with proper ship creation
-                continue
+            if not ship.indexes: continue
             for ship_idx in ship.indexes:
                 if not (0 <= ship_idx < 100 and search_grid_of_opponent[ship_idx] == "S"):
-                    is_fully_sunk = False
-                    break
-            
+                    is_fully_sunk = False; break
             if is_fully_sunk:
                 if ship.size in current_remaining_sizes:
                     current_remaining_sizes.remove(ship.size)
                     sunk_ships_accounted_for_indices.add(i)
         return current_remaining_sizes
 
-
-# ... (Rest of engine.py remains the same as the previous "complete" version)
-# Game class and its methods like __init__, make_move, AI methods, _calculate_heat_map, analyze_opponent_board
-# are assumed to be correct from the previous complete file provided.
-# The key fix was in Ship.__init__ and a refinement in Player.place_ships.
-
 class Game:
     def __init__(self, human1, human2):
-        self.human1 = human1
-        self.human2 = human2
-        self.player1 = Player()
-        self.player2 = Player()
+        self.human1 = human1; self.human2 = human2
+        self.player1 = Player(); self.player2 = Player()
         self.player1_turn = True
         self.computer_turn = not self.human1 
-        self.over = False
-        self.result = None 
-        self.shots_p1 = 0
-        self.shots_p2 = 0
-        self.n_shots = 0 
+        self.over = False; self.result = None 
+        self.shots_p1 = 0; self.shots_p2 = 0; self.n_shots = 0 
         self.analysis_results = {}
 
     def make_move(self, i):
@@ -131,91 +95,66 @@ class Game:
         shot_is_hit = False 
 
         if not (0 <= i < 100): 
-            # print(f"Error: Move index {i} is out of bounds.")
-            if not self.over: # Only switch turn if game not over due to this error
-                self.player1_turn = not self.player1_turn 
+            if not self.over: self.player1_turn = not self.player1_turn 
             return
 
-        # Allow shooting at already shot squares, but don't re-count shots or change state if already M/S
-        # However, re-shooting an 'H' could lead to 'S' if it completes a ship.
         if current_player.search[i] == "M" or current_player.search[i] == "S":
-            if not self.over: # If game not over, non-hitting re-shot square means turn change
-                 self.player1_turn = not self.player1_turn
-            return # No further action on already fully resolved squares (M or S)
+            if not self.over: self.player1_turn = not self.player1_turn
+            return 
         
-        original_search_state = current_player.search[i] # Store U or H
-
-        shot_counted_this_move = False # Flag to ensure shot is counted only once per make_move call
+        original_search_state = current_player.search[i]
+        shot_counted_this_move = False
 
         if i in opponent.indexes:
-            current_player.search[i] = "H"
-            shot_is_hit = True
-            if original_search_state == "U" and not shot_counted_this_move: # Count as a new shot
+            current_player.search[i] = "H"; shot_is_hit = True
+            if original_search_state == "U" and not shot_counted_this_move:
                 if current_player == self.player1: self.shots_p1 +=1
                 else: self.shots_p2 +=1
-                self.n_shots +=1
-                shot_counted_this_move = True
-
+                self.n_shots +=1; shot_counted_this_move = True
             for ship in opponent.ships:
                 if i in ship.indexes: 
                     is_sunk = True
                     for ship_idx in ship.indexes:
-                        if current_player.search[ship_idx] != "H" and current_player.search[ship_idx] != "S":
-                            is_sunk = False
-                            break
+                        if current_player.search[ship_idx] not in ("H", "S"): is_sunk = False; break
                     if is_sunk:
-                        for ship_idx in ship.indexes:
-                            current_player.search[ship_idx] = "S"
+                        for ship_idx in ship.indexes: current_player.search[ship_idx] = "S"
                     break 
-        else: # Miss
-            if current_player.search[i] == "U": # Only mark as miss and count shot if it was unknown
+        else: 
+            if current_player.search[i] == "U":
                 current_player.search[i] = "M"
                 if not shot_counted_this_move:
                     if current_player == self.player1: self.shots_p1 +=1
                     else: self.shots_p2 +=1
-                    self.n_shots +=1
-                    shot_counted_this_move = True
+                    self.n_shots +=1; shot_counted_this_move = True
         
         all_opponent_ships_hit = True
         for opponent_ship_idx in opponent.indexes:
-            if current_player.search[opponent_ship_idx] not in ("H", "S"):
-                all_opponent_ships_hit = False
-                break
-        
+            if current_player.search[opponent_ship_idx] not in ("H", "S"): all_opponent_ships_hit = False; break
         if all_opponent_ships_hit:
-            self.over = True
-            self.result = 1 if self.player1_turn else 2
+            self.over = True; self.result = 1 if self.player1_turn else 2
         
-        if not shot_is_hit and not self.over : 
-            self.player1_turn = not self.player1_turn
+        if not shot_is_hit and not self.over : self.player1_turn = not self.player1_turn
         
-        # Update computer_turn based on the new player1_turn state
         if not self.over:
             self.computer_turn = (not self.human1 and self.player1_turn) or \
                                  (not self.human2 and not self.player1_turn)
 
-
     def random_ai(self):
         search_grid = self.player1.search if self.player1_turn else self.player2.search
         unknown_squares = [i for i, square_status in enumerate(search_grid) if square_status == "U"]
-        if unknown_squares:
-            random_index = random.choice(unknown_squares)
-            self.make_move(random_index)
+        if unknown_squares: self.make_move(random.choice(unknown_squares))
 
     def basic_ai(self):
         search = self.player1.search if self.player1_turn else self.player2.search
-        unknown = [i for i, sq in enumerate(search) if sq == "U"]
-        hits = [i for i, sq in enumerate(search) if sq == "H"]
+        unknown = [i for i, sq in enumerate(search) if sq == "U"]; hits = [i for i, sq in enumerate(search) if sq == "H"]
         if not unknown: return 
         adj_to_hits = set()
         for h_idx in hits:
             for offset in [-1, 1, -10, 10]:
                 neighbor = h_idx + offset
                 if 0 <= neighbor < 100 and search[neighbor] == "U":
-                    if (offset == -1 or offset == 1) and (neighbor // 10 == h_idx // 10): 
-                        adj_to_hits.add(neighbor)
-                    elif (offset == -10 or offset == 10): 
-                        adj_to_hits.add(neighbor)
+                    if (offset == -1 or offset == 1) and (neighbor // 10 == h_idx // 10): adj_to_hits.add(neighbor)
+                    elif (offset == -10 or offset == 10): adj_to_hits.add(neighbor)
         if adj_to_hits: self.make_move(random.choice(list(adj_to_hits))); return
         checkerboard_unknown = [u for u in unknown if (u // 10 + u % 10) % 2 == 0]
         if checkerboard_unknown: self.make_move(random.choice(checkerboard_unknown)); return
@@ -247,49 +186,77 @@ class Game:
         remaining_ships_on_opponent = opponent.get_remaining_ship_sizes(search_grid)
         unknown_squares = [i for i, sq in enumerate(search_grid) if sq == "U"]
         hit_squares = [i for i, sq in enumerate(search_grid) if sq == "H"]
-        heat_map = self._calculate_heat_map(search_grid, hit_squares, remaining_ships_on_opponent)
+        heat_map_calculated = self._calculate_heat_map(search_grid, hit_squares, remaining_ships_on_opponent)
         hottest_square_idx = -1; max_heat = -1
         if unknown_squares:
             for i in unknown_squares:
-                if heat_map[i] > max_heat: max_heat = heat_map[i]; hottest_square_idx = i
-        analysis = {"remaining_ships": remaining_ships_on_opponent, "hottest_square": hottest_square_idx, "max_heat_value": max_heat}
+                if heat_map_calculated[i] > max_heat: max_heat = heat_map_calculated[i]; hottest_square_idx = i
+        analysis = {
+            "remaining_ships": remaining_ships_on_opponent, 
+            "hottest_square": hottest_square_idx, 
+            "max_heat_value": max_heat,
+            "heat_map": heat_map_calculated
+        }
         self.analysis_results[for_player_num] = analysis
         return analysis
 
-    def probabilistic_ai(self):
+    def probabilistic_ai(self): # AI này vẫn dùng để bắn
         player = self.player1 if self.player1_turn else self.player2
         opponent = self.player2 if self.player1_turn else self.player1
-        search = player.search; unknown = [i for i, sq in enumerate(search) if sq == "U"]; hits = [i for i, sq in enumerate(search) if sq == "H"]
+        search = player.search
+        unknown = [i for i, sq in enumerate(search) if sq == "U"]
+        hits = [i for i, sq in enumerate(search) if sq == "H"] # Chỉ các ô 'H'
+        
         if not unknown: return
+
         remaining = opponent.get_remaining_ship_sizes(search)
-        heat = self._calculate_heat_map(search, hits, remaining)
-        target_boost, line_boost = 100, 500
+        heat = self._calculate_heat_map(search, hits, remaining) 
+        
+        TARGET_BOOST_SINGLE_H = 50     
+        LINE_BOOST_ENDS = 10000        
+        priority_targets = [] 
+
         if hits:
             lines, seen_in_lines = [], set()
-            for h_idx in hits:
+            sorted_hits = sorted(list(hits))
+
+            for h_idx in sorted_hits:
                 if h_idx in seen_in_lines: continue
-                current_line_hor = [h_idx]; temp_seen_hor = {h_idx}
-                cur = h_idx + 1
-                while (h_idx // 10 == cur // 10) and cur < 100 and search[cur] in ("H", "S"): current_line_hor.append(cur); temp_seen_hor.add(cur); cur += 1
+                current_line_hor = {h_idx}; cur = h_idx + 1
+                while (h_idx // 10 == cur // 10) and cur < 100 and search[cur] in ("H", "S"): current_line_hor.add(cur); cur += 1
                 cur = h_idx - 1
-                while (h_idx // 10 == cur // 10) and cur >= 0 and search[cur] in ("H", "S"): current_line_hor.insert(0, cur); temp_seen_hor.add(cur); cur -= 1
-                if len(current_line_hor) > 1: lines.append(sorted(list(temp_seen_hor))); seen_in_lines.update(temp_seen_hor); continue
-                current_line_ver = [h_idx]; temp_seen_ver = {h_idx}
-                cur = h_idx + 10
-                while cur < 100 and search[cur] in ("H", "S"): current_line_ver.append(cur); temp_seen_ver.add(cur); cur += 10
+                while (h_idx // 10 == cur // 10) and cur >= 0 and search[cur] in ("H", "S"): current_line_hor.add(cur); cur -= 1
+                current_line_ver = {h_idx}; cur = h_idx + 10
+                while cur < 100 and search[cur] in ("H", "S"): current_line_ver.add(cur); cur += 10
                 cur = h_idx - 10
-                while cur >= 0 and search[cur] in ("H", "S"): current_line_ver.insert(0, cur); temp_seen_ver.add(cur); cur -= 10
-                if len(current_line_ver) > 1: lines.append(sorted(list(temp_seen_ver))); seen_in_lines.update(temp_seen_ver)
+                while cur >= 0 and search[cur] in ("H", "S"): current_line_ver.add(cur); cur -= 10
+                chosen_line_indices = []
+                if len(current_line_hor) > 1 and len(current_line_ver) > 1:
+                    chosen_line_indices = sorted(list(current_line_hor)) if len(current_line_hor) >= len(current_line_ver) else sorted(list(current_line_ver))
+                elif len(current_line_hor) > 1: chosen_line_indices = sorted(list(current_line_hor))
+                elif len(current_line_ver) > 1: chosen_line_indices = sorted(list(current_line_ver))
+                if chosen_line_indices and not any(idx in seen_in_lines for idx in chosen_line_indices):
+                    lines.append(chosen_line_indices); seen_in_lines.update(chosen_line_indices)
+
             for line_indices in lines:
                 if not line_indices: continue
-                a, b = line_indices[0], line_indices[-1]
-                is_horizontal_line = all(idx // 10 == a // 10 for idx in line_indices) if line_indices else False
-                if is_horizontal_line:
-                    for n_idx in [a - 1, b + 1]:
-                        if 0 <= n_idx < 100 and (n_idx // 10 == a // 10) and search[n_idx] == "U": heat[n_idx] *= line_boost
-                else:
-                    for n_idx in [a - 10, b + 10]:
-                        if 0 <= n_idx < 100 and search[n_idx] == "U": heat[n_idx] *= line_boost
+                first_h, last_h = line_indices[0], line_indices[-1]
+                is_horizontal = all(idx // 10 == first_h // 10 for idx in line_indices)
+                if is_horizontal:
+                    target_left = first_h - 1
+                    if (first_h // 10 == target_left // 10) and target_left >= 0 and search[target_left] == "U":
+                        heat[target_left] += LINE_BOOST_ENDS; priority_targets.append(target_left)
+                    target_right = last_h + 1
+                    if (last_h // 10 == target_right // 10) and target_right < 100 and search[target_right] == "U":
+                        heat[target_right] += LINE_BOOST_ENDS; priority_targets.append(target_right)
+                else: 
+                    target_up = first_h - 10
+                    if target_up >= 0 and search[target_up] == "U":
+                        heat[target_up] += LINE_BOOST_ENDS; priority_targets.append(target_up)
+                    target_down = last_h + 10
+                    if target_down < 100 and search[target_down] == "U":
+                        heat[target_down] += LINE_BOOST_ENDS; priority_targets.append(target_down)
+
             single_hits_to_boost = set(hits) - seen_in_lines
             for h_idx in single_hits_to_boost:
                  for offset in [-1, 1, -10, 10]:
@@ -298,13 +265,30 @@ class Game:
                         is_valid_adj = False
                         if (offset == -1 or offset == 1) and (n_idx // 10 == h_idx // 10): is_valid_adj = True
                         elif (offset == -10 or offset == 10): is_valid_adj = True
-                        if is_valid_adj: heat[n_idx] *= target_boost
+                        if is_valid_adj: heat[n_idx] += TARGET_BOOST_SINGLE_H
+        
+        if priority_targets:
+            best_priority_target = -1; max_priority_heat = -1
+            unique_priority_targets = sorted(list(set(priority_targets)))
+            for pt_idx in unique_priority_targets:
+                if heat[pt_idx] > max_priority_heat: max_priority_heat = heat[pt_idx]; best_priority_target = pt_idx
+            if best_priority_target != -1:
+                top_priority_targets = [pt for pt in unique_priority_targets if heat[pt] == max_priority_heat]
+                if top_priority_targets:
+                    parity_priority = [p for p in top_priority_targets if (p//10 + p%10)%2 ==0]
+                    move = random.choice(parity_priority) if parity_priority else random.choice(top_priority_targets)
+                    self.make_move(move); return
+
         if not unknown: self.random_ai(); return
         maxh_val = -1
         for i_idx in unknown:
             if heat[i_idx] > maxh_val: maxh_val = heat[i_idx]
-        if maxh_val <= 0 and unknown : self.random_ai(); return
+        if maxh_val < 0 and unknown : self.random_ai(); return # Use < 0 to catch all non-positive useful heat
         best_moves = [i_idx for i_idx in unknown if heat[i_idx] == maxh_val]
+        if not best_moves: # If no best_moves (e.g. all unknown have heat <=0)
+            if unknown: self.random_ai(); return
+            else: return # No unknown and no best_moves
+            
         parity_best = [b_idx for b_idx in best_moves if (b_idx // 10 + b_idx % 10) % 2 == 0]
         move = random.choice(parity_best) if parity_best else random.choice(best_moves)
         self.make_move(move)
