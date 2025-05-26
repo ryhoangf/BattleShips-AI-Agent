@@ -1,118 +1,133 @@
-from engine import Game
 import pygame
+from engine import Game
 
 pygame.init()
 pygame.font.init()
-pygame.display.set_caption("Battleship")
-font = pygame.font.SysFont("fresansttf", 100)
+font = pygame.font.SysFont("arial", 36)
 
+# AI config
+AI_MAP = {
+    "random": lambda g: g.random_ai(),
+    "basic": lambda g: g.basic_ai(),
+    "proba": lambda g: g.probabilistic_ai()
+}
 
-#global variables
-SQSIZE = 45
-H_MARGIN = SQSIZE*4
-V_MARGIN = SQSIZE
-WIDTH = SQSIZE*10*2 + H_MARGIN
-HEIGHT = SQSIZE*10*2 + V_MARGIN
+AI_LABEL_MAP = {
+    "easy": "random",
+    "medium": "basic",
+    "hard": "proba"
+}
+
+# GUI config
+WIDTH, HEIGHT = 600, 400
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
-INDENT = 10
-HUMAN1 = False
-HUMAN2 = False
+pygame.display.set_caption("Battleship - AI Mode Selector")
 
+WHITE = (255, 255, 255)
 GREY = (40, 50, 60)
-WHITE = (255, 250, 250)
+BLUE = (50, 150, 200)
 GREEN = (50, 200, 150)
-BLUE = (50, 150,200)
-RED =(250, 50, 100)
-ORANGE =(250, 140, 20)
 
-COLORS = {"U": GREY, "M": BLUE, "H": ORANGE, "S": RED}
+# Buttons
+class Button:
+    def __init__(self, rect, text):
+        self.rect = pygame.Rect(rect)
+        self.text = text
+        self.hovered = False
 
-#draw grid function
-def draw_grid(player, left = 0, top = 0, search = False):
-    for i in range (100):
-        x = left + i%10 * SQSIZE
-        y = top + i//10 * SQSIZE
-        square = pygame.Rect(x, y, SQSIZE, SQSIZE)
-        pygame.draw.rect(SCREEN, WHITE, square, width = 3)
-        if search:
-            x += SQSIZE //2
-            y += SQSIZE //2
-            pygame.draw.circle(SCREEN, COLORS[player.search[i]], (x,y), radius=SQSIZE//4)
+    def draw(self, surface):
+        color = GREEN if self.hovered else BLUE
+        pygame.draw.rect(surface, color, self.rect, border_radius=8)
+        txt_surface = font.render(self.text, True, WHITE)
+        surface.blit(txt_surface, (self.rect.x + 15, self.rect.y + 10))
 
-def draw_ships(player, left = 0, top = 0):
-    for ship in player.ships:
-        x = left + ship.col * SQSIZE + INDENT
-        y = top + ship.row * SQSIZE + INDENT
-        if ship.orientation == "h":
-            width = ship.size *SQSIZE - 2*INDENT
-            height = SQSIZE - 2*INDENT
-        else:
-            width = SQSIZE- 2*INDENT
-            height = ship.size * SQSIZE- 2*INDENT
-        rectangle = pygame.Rect(x,y, width,height)
-        pygame.draw.rect(SCREEN, GREEN, rectangle, border_radius=15)
+    def is_hovered(self, pos):
+        self.hovered = self.rect.collidepoint(pos)
+        return self.hovered
 
-game = Game(HUMAN1, HUMAN2)
+    def is_clicked(self, event):
+        return event.type == pygame.MOUSEBUTTONDOWN and self.hovered
 
-#game loop
-animating = True
-pausing = False
+# Game launcher
+def launch_game(human1, human2, ai1=None, ai2=None):
+    from battleship_gui import run_game_loop
+    run_game_loop(human1, human2, ai1, ai2)
 
-while animating:
+# Main menu logic
+def main_menu():
+    mode = None
+    ai1, ai2 = None, None
+    buttons = {
+        "pve": Button((200, 80, 200, 50), "Player vs AI"),
+        "ai_easy": Button((50, 160, 150, 50), "Easy (Random)"),
+        "ai_medium": Button((225, 160, 150, 50), "Medium (Basic)"),
+        "ai_hard": Button((400, 160, 150, 50), "Hard (Proba)"),
+        "pvp": Button((200, 240, 200, 50), "AI vs AI")
+    }
 
-    for event in pygame.event.get():
-        
-        if event.type == pygame.QUIT:
-            animating = False
-        
-        #user click on mouse
-        if event.type == pygame.MOUSEBUTTONDOWN and not game.over:
-            x, y = pygame.mouse.get_pos()
-            if game.player1_turn and x < SQSIZE * 10 and y < SQSIZE*10:
-                row = y //SQSIZE
-                col = x//SQSIZE
-                index = row *10 + col
-                game.make_move(index)
-            elif not game.player1_turn and x > WIDTH -SQSIZE*10 and y> SQSIZE*10 + V_MARGIN:
-                row = (y- SQSIZE*10 - V_MARGIN) //SQSIZE
-                col = (x - SQSIZE*10 - H_MARGIN)//SQSIZE
-                index = row *10 + col
-                game.make_move(index)
-
-        if event.type == pygame.KEYDOWN:
-            #use escape key to clode the animation
-            if event.key == pygame.K_ESCAPE:
-                animating == False
-            #use space bar to pause and unpause
-            if event.key == pygame.K_SPACE:
-                pausing = not pausing
-            #use restart the game
-            if event.key == pygame.K_RETURN:
-                game = Game(HUMAN1, HUMAN2)
-    
-    if not pausing:
+    running = True
+    while running:
         SCREEN.fill(GREY)
-        draw_grid(game.player1, search= True)
-        draw_grid(game.player2, search= True, left = (WIDTH-H_MARGIN)//2 + H_MARGIN, top = (HEIGHT-V_MARGIN)//2 + V_MARGIN)
-        draw_grid(game.player1, left = (WIDTH-H_MARGIN)//2 + H_MARGIN)
-        draw_grid(game.player2, top = (HEIGHT-V_MARGIN)//2 + V_MARGIN)
-        
-        draw_ships(game.player1, top = (HEIGHT-V_MARGIN)//2 + V_MARGIN)
-        draw_ships(game.player2, left = (WIDTH-H_MARGIN)//2 + H_MARGIN)
-        
-        #computer moves
-        if not game.over and game.computer_turn:
-            #chỗ này có thể thay đổi logic để xem các thuật toán random và basic thuật toán nào tốt hơn
-            if game.player1_turn:
-                game.random_ai()
-            else:
-                game.basic_ai()
-            # game.basic_ai()
-        #game over
-        if game.over:
-            text = "Player " + str(game.result) + " win!"
-            textbox = font.render(text, False, GREY, WHITE)
-            SCREEN.blit(textbox, (WIDTH//2 - 240, HEIGHT//2 - 50))
-        
-        pygame.time.wait(100)
+        mouse_pos = pygame.mouse.get_pos()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            for key, btn in buttons.items():
+                if btn.is_clicked(event):
+                    if key == "pve":
+                        mode = "pve"
+                    elif key.startswith("ai_") and mode == "pve":
+                        label = key.split("_")[1]  # easy, medium, hard
+                        ai2 = AI_LABEL_MAP[label]   # mapped to random, basic, proba
+                        ai1 = None
+                        launch_game(True, False, ai1, ai2)
+                        running = False
+                    elif key == "pvp":
+                        mode = "pvp"
+                        ai1 = select_ai("Select AI for Player 1")
+                        ai2 = select_ai("Select AI for Player 2")
+                        launch_game(False, False, ai1, ai2)
+                        running = False
+
+        for key, btn in buttons.items():
+            btn.is_hovered(mouse_pos)
+            if mode == "pve" and not key.startswith("ai_"):
+                btn.draw(SCREEN)
+            elif mode != "pve" and not key.startswith("ai_"):
+                btn.draw(SCREEN)
+            elif mode == "pve" and key.startswith("ai_"):
+                btn.draw(SCREEN)
+
         pygame.display.flip()
+
+# Simple dropdown AI chooser for PvP mode
+def select_ai(title):
+    clock = pygame.time.Clock()
+    ai_buttons = {
+        "random": Button((225, 100, 150, 50), "Random"),
+        "basic": Button((225, 170, 150, 50), "Basic"),
+        "proba": Button((225, 240, 150, 50), "Proba")
+    }
+    while True:
+        SCREEN.fill(GREY)
+        txt = font.render(title, True, WHITE)
+        SCREEN.blit(txt, (WIDTH // 2 - txt.get_width() // 2, 30))
+
+        mouse_pos = pygame.mouse.get_pos()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); exit()
+            for key, btn in ai_buttons.items():
+                if btn.is_clicked(event):
+                    return key
+
+        for btn in ai_buttons.values():
+            btn.is_hovered(mouse_pos)
+            btn.draw(SCREEN)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+if __name__ == "__main__":
+    main_menu()
