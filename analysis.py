@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from scipy.stats import gaussian_kde
 
 # Danh sách các AI hiện có
 AI_MAP = {
@@ -273,18 +274,21 @@ class AIAnalyzer:
                     text = "--"
                 ax4.text(j, i, text, ha="center", va="center", color="black")
 
-        # 5. Biểu đồ tần suất phân phối số lượt bắn
+        # 5. Biểu đồ tần suất phân phối số lượt bắn (mượt)
         ax5 = plt.subplot(2, 3, (5, 6))
         for ai in self.ais:
             shots = self.summary[ai]['shots']
-            values, counts = np.unique(shots, return_counts=True)
-            ax5.plot(values, counts, marker='o', label=ai.upper())
+            if len(shots) > 1:
+                kde = gaussian_kde(shots, bw_method=0.3)
+                x_grid = np.linspace(min(shots), max(shots), 200)
+                ax5.plot(x_grid, kde(x_grid) * len(shots), label=ai.upper())
+            else:
+                ax5.plot(shots, [1], 'o', label=ai.upper())
 
-        ax5.set_title('Shot Distribution (Line Chart)')
+        ax5.set_title('Shot Distribution (Smoothed)')
         ax5.set_xlabel('Number of Shots')
         ax5.set_ylabel('Frequency')
         ax5.legend()
-
         plt.show()
 
     def save_results(self, filename):
