@@ -414,39 +414,53 @@ class Game:
         for s in sunk:
             if s in remaining: remaining.remove(s)
 
-        # Monte Carlo: sinh n_sim bàn cờ hợp lệ
         counts = np.zeros(100)
-        for _ in range(n_sim):
+        valid_boards = 0
+        tries = 0
+        max_tries = n_sim * 10  # thử tối đa 10 lần số mẫu mong muốn
+        while valid_boards < n_sim and tries < max_tries:
+            tries += 1
             board = np.zeros(100, dtype=bool)
             ships = []
+            ok = True
             for sz in remaining:
+                if sz <= 0 or sz > 10:
+                    continue  # Bỏ qua kích thước tàu không hợp lệ
                 placed = False
-                for _ in range(100):  # thử tối đa 100 lần cho mỗi tàu
-                    ori = np.random.choice(["h", "v"])
-                    if ori == "h":
-                        row = np.random.randint(0, 10)
-                        col = np.random.randint(0, 11 - sz)
+                possible_positions = []
+                # Sinh tất cả vị trí ngang hợp lệ
+                for row in range(10):
+                    for col in range(11 - sz):
                         idxs = [row*10 + col + i for i in range(sz)]
-                    else:
-                        row = np.random.randint(0, 11 - sz)
-                        col = np.random.randint(0, 10)
+                        if all(0 <= x < 100 for x in idxs):
+                            possible_positions.append(idxs)
+                # Sinh tất cả vị trí dọc hợp lệ
+                for row in range(11 - sz):
+                    for col in range(10):
                         idxs = [row*10 + col + i*10 for i in range(sz)]
-                    # Kiểm tra hợp lệ
+                        if all(0 <= x < 100 for x in idxs):
+                            possible_positions.append(idxs)
+                if not possible_positions:
+                    ok = False
+                    break
+                np.random.shuffle(possible_positions)
+                for idxs in possible_positions:
                     if any(board[i] for i in idxs): continue
                     if any(i in misses for i in idxs): continue
-                    if hits and not all(h in idxs for h in hits if h not in [i for s in ships for i in s]): continue
                     placed = True
                     for i in idxs: board[i] = True
                     ships.append(idxs)
                     break
                 if not placed:
-                    break  # không đặt được tàu này, bỏ qua bàn cờ này
-            else:
-                # Nếu đặt đủ tất cả tàu
+                    ok = False
+                    break
+            # Kiểm tra tất cả các hit phải nằm trên ít nhất một tàu
+            if ok and all(any(h in s for s in ships) for h in hits):
                 for i in unknown:
                     if board[i]: counts[i] += 1
+                valid_boards += 1
 
-        # Chọn ô có xác suất cao nhất
+        # Nếu không có bàn cờ hợp lệ nào, fallback random
         if np.sum(counts) == 0:
             move = np.random.choice(unknown)
         else:
@@ -454,31 +468,42 @@ class Game:
             move = np.random.choice(best)
         self.make_move(move)
 
-    def bayesian_ai(self):
+    def bayesian_ai(self, return_steps=False):
         search = self.player1.search if self.player1_turn else self.player2.search
         unknown = [i for i, sq in enumerate(search) if sq == "U"]
         hits = [i for i, sq in enumerate(search) if sq == "H"]
         misses = [i for i, sq in enumerate(search) if sq == "M"]
-        # Khởi tạo xác suất đều
+        steps = []
+        # Bước 1: khởi tạo đều
         prob = {i: 1.0 for i in unknown}
-        # Nếu có hit, tăng xác suất các ô lân cận
+        reason = {i: 'Khởi tạo đều' for i in unknown}
+        steps.append({'desc': 'Khởi tạo xác suất đều', 'prob': prob.copy(), 'reason': reason.copy()})
+        # Bước 2: tăng quanh hit (tăng mạnh hơn)
         for h in hits:
             for n in (h+1, h-1, h+10, h-10):
                 if 0 <= n < 100 and n in prob:
-                    prob[n] *= 3  # tăng mạnh xác suất quanh hit
-        # Nếu có miss, giảm xác suất các ô lân cận
+                    prob[n] *= 5  # tăng mạnh hơn
+                    reason[n] = reason.get(n, '') + 'Tăng mạnh vì cạnh hit; '
+        steps.append({'desc': 'Tăng xác suất quanh hit', 'prob': prob.copy(), 'reason': reason.copy()})
+        # Bước 3: giảm quanh miss (giảm mạnh hơn)
         for m in misses:
             for n in (m+1, m-1, m+10, m-10):
                 if 0 <= n < 100 and n in prob:
-                    prob[n] *= 0.5  # giảm xác suất quanh miss
-        # Bình thường hóa
+                    prob[n] *= 0.2  # giảm mạnh hơn
+                    reason[n] = reason.get(n, '') + 'Giảm mạnh vì cạnh miss; '
+        steps.append({'desc': 'Giảm xác suất quanh miss', 'prob': prob.copy(), 'reason': reason.copy()})
+        # Bước 4: bình thường hóa
         total = sum(prob.values())
         if total > 0:
             for k in prob:
                 prob[k] /= total
-        # Chọn ô có xác suất cao nhất
+        steps.append({'desc': 'Bình thường hóa xác suất', 'prob': prob.copy(), 'reason': reason.copy()})
+        # Bước 5: chọn ô
         best = [k for k, v in prob.items() if v == max(prob.values())]
         move = np.random.choice(best)
+        steps.append({'desc': 'Chọn ô có xác suất cao nhất', 'prob': prob.copy(), 'reason': reason.copy(), 'chosen': move})
+        if return_steps:
+            return steps
         self.make_move(move)
 
 AI_MAP = {

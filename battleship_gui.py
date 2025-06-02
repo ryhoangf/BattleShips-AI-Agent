@@ -84,7 +84,6 @@ class InGameButton:
 def count_sunk_ships(search, target_player): return sum(all(search[i] == "S" for i in ship.indexes) for ship in target_player.ships)
 
 # draw_grid (remains the same)
-
 def draw_grid(player, left, top, search=True, is_active_player_grid=False, show_heat=True, heat_map=None):
     if search and is_active_player_grid:
         pygame.draw.rect(SCREEN, HIGHLIGHT_BORDER, (left - 3, top - 3, GRID_ACTUAL_SIZE + 6, GRID_ACTUAL_SIZE + 6), width=3, border_radius=5)
@@ -94,19 +93,11 @@ def draw_grid(player, left, top, search=True, is_active_player_grid=False, show_
         square_rect = pygame.Rect(x, y, SQSIZE, SQSIZE)
         pygame.draw.rect(SCREEN, COLORS["U"], square_rect)
         pygame.draw.rect(SCREEN, WHITE, square_rect, width=1)
-
-        # Vẽ heat map chỉ khi là bảng Search!
-        if show_heat and heat_map is not None and player.search[i] == "U":
-            txt = stats_font.render(str(heat_map[i]), True, (255, 0, 0))
-            SCREEN.blit(txt, txt.get_rect(center=(x + SQSIZE // 2, y + SQSIZE // 2)))
-
         if search and player.search[i] != "U":
             cx = x + SQSIZE // 2
             cy = y + SQSIZE // 2
             radius_factor = 0.35 if SQSIZE > 40 else 0.4
             pygame.draw.circle(SCREEN, COLORS[player.search[i]], (cx, cy), radius=int(SQSIZE * radius_factor))
-
-
 
 # draw_ships (remains the same)
 def draw_ships(player, left, top):
@@ -213,7 +204,6 @@ def run_game_loop(human1, human2, ai1_name=None, ai2_name=None):
     animating = True; pausing = False; clock = pygame.time.Clock()
     ai_waiting = False
     ai_wait_start = 0
-
     btn_w = int(SQSIZE * 4); btn_h = int(SQSIZE * 1.0)
     exit_btn_rect = pygame.Rect(REAL_WIDTH - btn_w - SIDE_PADDING, (TOP_BANNER_HEIGHT - btn_h)//2, btn_w, btn_h)
     exit_button = InGameButton(exit_btn_rect, "Exit Menu", button_font_small)
@@ -256,22 +246,16 @@ def run_game_loop(human1, human2, ai1_name=None, ai2_name=None):
                     c=(m_pos[0]-p2_sr.left)//SQSIZE; r=(m_pos[1]-p2_sr.top)//SQSIZE
                     if 0<=r<10 and 0<=c<10 and game.player2.search[r*10+c]=='U': game.make_move(r*10+c)
         if not animating: break
-
         if not pausing:
             SCREEN.fill(GREY_BG)
-            # Ở trong run_game_loop, mỗi frame:
             heat_map = None
             if not game.over:
                 is_ai_turn = (not human1 and game.player1_turn and ai1_name == "proba") or (not human2 and not game.player1_turn and ai2_name == "proba")
                 if is_ai_turn:
                     heat_map = game.compute_heat_map()
-            # Draw top banner elements
             draw_turn_indicator(game)
             exit_button.draw(SCREEN)
-            
-            # Draw grid block (labels then grids)
             draw_labels(grid_map)
-           # Player 1 Search
             draw_grid(
                 game.player1,
                 *grid_map["p1_search"],
@@ -280,11 +264,8 @@ def run_game_loop(human1, human2, ai1_name=None, ai2_name=None):
                 show_heat=(game.player1_turn and heat_map is not None),
                 heat_map=(heat_map if game.player1_turn else None)
             )
-            # Player 2 Ships (không bao giờ show heat)
             draw_grid(game.player2, *grid_map["p2_ships"], search=False, show_heat=False)
-            # Player 1 Ships (không bao giờ show heat)
             draw_grid(game.player1, *grid_map["p1_ships"], search=False, show_heat=False)
-            # Player 2 Search
             draw_grid(
                 game.player2,
                 *grid_map["p2_search"],
@@ -293,57 +274,32 @@ def run_game_loop(human1, human2, ai1_name=None, ai2_name=None):
                 show_heat=(not game.player1_turn and heat_map is not None),
                 heat_map=(heat_map if not game.player1_turn else None)
             )
-
-
-            
-            is_aivai_mode = not game.human1 and not game.human2
-            
-            if game.human1 or game.over or is_aivai_mode: draw_ships(game.player1,*grid_map["p1_ships"])
-            if game.human2 or game.over or is_aivai_mode: draw_ships(game.player2,*grid_map["p2_ships"])
-
             is_h_turn = (game.human1 and game.player1_turn) or (game.human2 and not game.player1_turn)
-
-# AI move logic with 1-second delay
             if not game.over and not is_h_turn:
                 if not ai_waiting:
                     ai_waiting = True
                     ai_wait_start = pygame.time.get_ticks()
                 else:
-                    if pygame.time.get_ticks() - ai_wait_start >= 1000:  # Delay 1s
+                    if pygame.time.get_ticks() - ai_wait_start >= 1000:
                         if not human1 and game.player1_turn and ai1_name:
-                           AI_MAP[ai1_name](game)
+                            AI_MAP[ai1_name](game)
                         elif not human2 and not game.player1_turn and ai2_name:
                             AI_MAP[ai2_name](game)
                         ai_waiting = False
-
-            
-            # Game Over Text (if applicable)
-            if game.over:
-                win_txt=("P1 WINS!" if game.human1 else "AI 1 WINS!") if game.result==1 else ("P2 WINS!" if game.human2 else "AI 2 WINS!")
-                txt_s=result_font.render(win_txt,True,ORANGE_HIT)
-                mid_gap_y = GRID_BLOCK_START_Y + ACTUAL_LABEL_HEIGHT_PER_ROW + GRID_ACTUAL_SIZE + VERTICAL_GRID_PADDING_BETWEEN // 2
-                txt_r=txt_s.get_rect(center=(REAL_WIDTH//2, mid_gap_y))
-                SCREEN.blit(txt_s,txt_r)
-                again_s=label_font.render("ENTER to Play Again",True,WHITE)
-                again_r=again_s.get_rect(center=(REAL_WIDTH//2, txt_r.bottom + int(SQSIZE*0.7)))
-                SCREEN.blit(again_s,again_r)
-
-            # Draw bottom banner elements
+            if game.human1 or game.over or (not game.human1 and not game.human2): draw_ships(game.player1,*grid_map["p1_ships"])
+            if game.human2 or game.over or (not game.human1 and not game.human2): draw_ships(game.player2,*grid_map["p2_ships"])
             draw_stats(game)
             draw_legend()
-            
-            pygame.display.flip() # Single flip after all drawing
-
-        # Timing / Delay logic
+            pygame.display.flip()
         clock.tick(60)
         current_delay = 10
         if not pausing and not game.over:
             is_h_turn_for_delay = (game.human1 and game.player1_turn) or \
-                                  (game.human2 and not game.player1_turn) # Re-check for current turn state
-            if not is_h_turn_for_delay: # AI's turn (1s delay was before move)
-                pass 
-            elif is_h_turn_for_delay and not m_clk: # Human's turn, no click
-                current_delay = 30 
+                                  (game.human2 and not game.player1_turn)
+            if not is_h_turn_for_delay:
+                pass
+            elif is_h_turn_for_delay and not m_clk:
+                current_delay = 30
         elif pausing:
             current_delay = 100
         pygame.time.wait(current_delay)
