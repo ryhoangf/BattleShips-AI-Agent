@@ -283,8 +283,6 @@ class AIAnalyzer:
         ax5.set_ylabel('Frequency')
         ax5.legend()
 
-        plt.show()
-
     def save_results(self, filename):
         """Lưu kết quả vào các tệp CSV."""
         # Lưu kết quả trận đấu

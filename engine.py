@@ -311,3 +311,77 @@ Probabilistic AI là một chiến lược heuristic-based, kết hợp luật g
 -> Nó không học, không dự đoán thống kê, mà là một cách tính toán xác suất “giả định thông minh” từ toàn bộ trạng thái bàn cờ.
 
 """
+
+# 3. probabilistic_ai(self) (AI Dựa trên Xác Suất - Heatmap)
+# Mục đích: Đây là thuật toán AI phức tạp và thông minh nhất trong ba thuật toán. Nó cố gắng tính toán xác suất có tàu tại mỗi ô chưa bắn ("U") bằng cách xem xét tất cả các vị trí và hướng có thể của các tàu còn lại. Sau đó, nó ưu tiên bắn vào các ô có xác suất cao nhất, đồng thời "tăng cường" (boost) xác suất cho các ô xung quanh những điểm đã bắn trúng ("H").
+# Cách hoạt động (theo các bước đã được đánh số trong comment của bạn):
+# Xác định các tàu chưa chìm (remaining):
+# search = player.search: Lấy bảng trạng thái.
+# unknown = ...; hits = ...: Lấy danh sách ô chưa bắn và ô đã trúng.
+# sunk = []: Danh sách lưu kích thước các tàu đã chìm.
+# visited = set(): Set để theo dõi các ô "S" đã được duyệt qua (để tránh đếm lại).
+# Gom nhóm các ô "S":
+# Lặp qua từng ô i trên bàn cờ.
+# Nếu ô i là "S" và chưa được visited:
+# Sử dụng thuật toán tìm kiếm (ở đây là DFS - Depth First Search - sử dụng stack) để tìm tất cả các ô "S" liền kề tạo thành một con tàu đã chìm.
+# group sẽ chứa tất cả các chỉ số của một con tàu đã chìm.
+# visited |= group: Thêm tất cả các ô trong group vào visited.
+# sunk.append(len(group)): Lưu lại kích thước (số ô) của con tàu vừa tìm được vào danh sách sunk.
+# remaining = [5,4,3,3,2]: Danh sách kích thước các tàu ban đầu.
+# for s in sunk: if s in remaining: remaining.remove(s): Loại bỏ kích thước của các tàu đã chìm khỏi danh sách remaining. Giờ đây remaining chứa kích thước của các tàu mà AI vẫn cần phải tìm.
+# Xây dựng Heat-map (heat):
+# heat = [0]*100: Khởi tạo một danh sách heat gồm 100 phần tử, ban đầu tất cả đều bằng 0. Mỗi phần tử heat[i] sẽ đại diện cho "độ nóng" (khả năng có tàu) tại ô i.
+# Hàm fit(start, size, ori):
+# Mục đích: Kiểm tra xem một con tàu có kích thước size có thể được đặt hợp lệ tại vị trí start theo hướng ori ("h" hoặc "v") hay không.
+# Tính toán các chỉ số idxs mà con tàu sẽ chiếm giữ.
+# Kiểm tra điều kiện không hợp lệ:
+# Tràn biên (tàu vượt ra ngoài bàn cờ).
+# Chồng lấn lên ô đã bắn trượt ("M") hoặc ô của tàu đã chìm ("S").
+# Nếu hợp lệ, trả về True và danh sách idxs. Ngược lại, trả về False, [].
+# Tạo Heat-map:
+# for sz in remaining:: Lặp qua từng kích thước sz của các tàu còn lại.
+# for st in range(100):: Lặp qua từng ô st có thể là điểm bắt đầu của tàu.
+# for ori in ("h","v"):: Thử cả hai hướng đặt tàu (ngang và dọc).
+# ok, idxs = fit(st, sz, ori): Kiểm tra xem việc đặt tàu có hợp lệ không.
+# if ok:: Nếu hợp lệ:
+# bonus = 1 + sum(1 for h in hits if h in idxs): Tính điểm thưởng. Nếu vị trí đặt tàu này không trùng với ô "H" nào đã bắn trúng, bonus = 1. Nếu nó đi qua một ô "H", bonus = 2. Nếu đi qua hai ô "H", bonus = 3, v.v. Điều này ưu tiên các vị trí đặt tàu giải thích được các cú bắn trúng hiện tại.
+# for idx in idxs:: Lặp qua từng ô idx mà con tàu này chiếm giữ.
+# if search[idx]=="U": heat[idx]+=bonus: Nếu ô idx là một ô chưa bắn ("U"), tăng giá trị heat của nó lên bằng bonus.
+# Boost (Tăng cường) điểm Heat xung quanh các ô "H":
+# Mục đích: Sau khi có heat-map cơ bản, AI cần tập trung hơn vào việc "kết liễu" các tàu đã bị trúng.
+# target_boost = 100, line_boost = 500: Các hệ số để tăng cường điểm heat.
+# if hits:: Chỉ thực hiện boost nếu có ít nhất một ô "H".
+# Gom các ô "H" thành đường (line):
+# lines, seen = [], set(): lines sẽ lưu các chuỗi ô "H" liên tiếp (theo chiều ngang hoặc dọc). seen để tránh xử lý lại các ô "H" đã thuộc một line.
+# Lặp qua từng ô h trong hits.
+# Nếu h chưa được seen:
+# Thử gom theo chiều ngang: Tìm tất cả các ô "H" hoặc "S" liên tiếp kề bên trái và phải của h.
+# Nếu tìm được một chuỗi ngang (hor) có độ dài lớn hơn 1, thêm vào lines và cập nhật seen.
+# Nếu không phải ngang, thử gom theo chiều dọc tương tự.
+# Boost hai đầu mút của các đường "H" (lines):
+# for line in lines:: Lặp qua từng chuỗi "H" đã tìm được.
+# a, b = line[0], line[-1]: Lấy ô đầu và ô cuối của chuỗi.
+# Kiểm tra xem ô ngay trước a và ngay sau b (theo hướng của line) có phải là "U" không. Nếu có, nhân heat của ô đó với line_boost. Ý tưởng là tàu có thể kéo dài ra từ hai đầu của chuỗi "H" đã biết.
+# Boost các ô kề các ô "H" đơn lẻ:
+# for h in hits:: Lặp qua tất cả các ô "H". (Lưu ý: Có một đoạn lặp này bị trùng lặp trong code gốc, nhưng logic là như nhau).
+# for n in (h+1,h-1,h+10,h-10):: Xét 4 ô kề (trái, phải, trên, dưới) của h.
+# if 0<=n<100 and search[n]=="U": heat[n]*=target_boost: Nếu ô kề n là "U", nhân heat của nó với target_boost. Điều này làm tăng khả năng bắn vào các ô xung quanh một điểm trúng đơn lẻ.
+# Chọn nước đi cuối cùng:
+# maxh = max(heat[i] for i in unknown): Tìm giá trị heat cao nhất trong số các ô "U".
+# best = [i for i in unknown if heat[i]==maxh]: Tạo danh sách best chứa tất cả các ô "U" có giá trị heat bằng maxh.
+# Ưu tiên Parity (Checkerboard):
+# parity_best = [b for b in best if (b//10 + b%10)%2==0]: Từ danh sách best, lọc ra những ô có "parity 0" (tổng hàng và cột là số chẵn - tương ứng với một màu trên bàn cờ ca-rô). Lý do là vì tàu nhỏ nhất dài 2 ô, nên ít nhất một phần của mỗi tàu sẽ nằm trên ô có parity 0 (hoặc 1, tùy cách chọn). Điều này giúp thu hẹp lựa chọn khi có nhiều ô cùng heat cao.
+# move = random.choice(parity_best) if parity_best else random.choice(best):
+# Nếu parity_best không rỗng (có ô "U" với heat cao nhất và parity 0), chọn ngẫu nhiên một ô từ parity_best.
+# Nếu không, chọn ngẫu nhiên một ô từ best.
+# self.make_move(move): Thực hiện nước đi.
+# Ưu điểm:
+# Thông minh và có tính chiến thuật cao nhất trong ba AI.
+# Tính đến kích thước các tàu còn lại.
+# Sử dụng heat-map để đánh giá xác suất một cách có hệ thống.
+# Ưu tiên "kết liễu" tàu khi đã bắn trúng.
+# Sử dụng parity để phá vỡ thế cân bằng khi có nhiều lựa chọn tốt như nhau.
+# Nhược điểm:
+# Phức tạp hơn để triển khai và hiểu.
+# Tính toán tốn thời gian hơn so với các AI đơn giản (đặc biệt là bước tạo heat-map).
+# Vẫn là một thuật toán heuristic (dựa trên kinh nghiệm, quy tắc), không đảm bảo tìm ra nước đi tối ưu tuyệt đối trong mọi trường hợp.
