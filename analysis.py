@@ -16,7 +16,8 @@ from scipy.stats import gaussian_kde
 AI_MAP = {
     "random": lambda game: game.random_ai(),
     "basic": lambda game: game.basic_ai(),
-    "proba": lambda game: game.probabilistic_ai()
+    "proba": lambda game: game.probabilistic_ai(),
+    "bayes": lambda game: game.bayesian_ai()
 }
 
 
