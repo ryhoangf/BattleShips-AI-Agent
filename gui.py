@@ -3,8 +3,8 @@ import pygame
 pygame.init()
 pygame.font.init()
 
-AI_MAP = {"random": lambda g: g.random_ai(), "basic": lambda g: g.basic_ai(), "proba": lambda g: g.probabilistic_ai()}
-AI_LABEL_MAP = {"easy": "random", "medium": "basic", "hard": "proba"}
+AI_MAP = {"random": lambda g: g.random_ai(), "basic": lambda g: g.basic_ai(), "proba": lambda g: g.probabilistic_ai(), "montecarlo": lambda g: g.monte_carlo_ai(), "bayes": lambda g: g.bayesian_ai()}
+AI_LABEL_MAP = {"easy": "random", "medium": "basic", "hard": "proba", "montecarlo": "montecarlo", "bayes": "bayes"}
 
 MENU_SCREEN_INFO = pygame.display.Info()
 MENU_WIDTH, MENU_HEIGHT = MENU_SCREEN_INFO.current_w, MENU_SCREEN_INFO.current_h
@@ -65,7 +65,9 @@ def select_pve_ai_difficulty():
         "easy": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons, btn_w, btn_h), "Easy (Random)", base_font=font_ai_difficulty_button),
         "medium": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + btn_h + btn_spacing, btn_w, btn_h), "Medium (Basic)", base_font=font_ai_difficulty_button),
         "hard": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 2*(btn_h + btn_spacing), btn_w, btn_h), "Hard (Proba)", base_font=font_ai_difficulty_button),
-        "back": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 3*(btn_h + btn_spacing) + btn_spacing*2, btn_w, btn_h), "Back to Menu", base_font=font_ai_difficulty_button, color=(100,100,100), hover_color=(130,130,130))
+        "montecarlo": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 3*(btn_h + btn_spacing), btn_w, btn_h), "Monte Carlo AI", base_font=font_ai_difficulty_button),
+        "bayes": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 4*(btn_h + btn_spacing), btn_w, btn_h), "Bayesian AI", base_font=font_ai_difficulty_button),
+        "back": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 5*(btn_h + btn_spacing) + btn_spacing*2, btn_w, btn_h), "Back to Menu", base_font=font_ai_difficulty_button, color=(100,100,100), hover_color=(130,130,130))
     }
     selected_ai_key = None
 
@@ -119,9 +121,9 @@ def main_menu():
 
     buttons = {
         "pve": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options, button_width, button_height), "Player vs AI"),
-        "pvp_human": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + button_height + spacing, button_width, button_height), "Player vs Player"),
-        "aivai": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 2 * (button_height + spacing), button_width, button_height), "AI vs AI"),
-        "exit": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 3 * (button_height + spacing) + int(spacing*1.5), button_width, button_height), # Position Exit button lower
+        # "pvp_human": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + button_height + spacing, button_width, button_height), "Player vs Player"),
+        "aivai": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + (button_height + spacing), button_width, button_height), "AI vs AI"),
+        "exit": Button(((MENU_WIDTH - button_width) // 2, start_y_main_options + 2 * (button_height + spacing) + int(spacing*1.5), button_width, button_height), # Position Exit button lower
                        "Exit Game", color=EXIT_BUTTON_COLOR, hover_color=EXIT_BUTTON_HOVER_COLOR)
     }
     
@@ -145,8 +147,8 @@ def main_menu():
                         chosen_ai_for_pve = select_pve_ai_difficulty()
                         if chosen_ai_for_pve: # If a difficulty was selected (not backed out)
                             launch_game(True, False, None, chosen_ai_for_pve)
-                    elif key == "pvp_human":
-                        launch_game(True, True) 
+                    # elif key == "pvp_human":
+                    #     launch_game(True, True) 
                     elif key == "aivai":
                         selected_ai1 = select_ai("Select AI for Computer 1") # Changed title
                         if selected_ai1:
@@ -176,7 +178,9 @@ def select_ai(title_text):
         "random": Button(((MENU_WIDTH - btn_w)//2, start_y_buttons, btn_w, btn_h), "Random AI", base_font=font_ai_difficulty_button),
         "basic": Button(((MENU_WIDTH - btn_w)//2, start_y_buttons + btn_h + btn_spacing, btn_w, btn_h), "Basic AI", base_font=font_ai_difficulty_button),
         "proba": Button(((MENU_WIDTH - btn_w)//2, start_y_buttons + 2*(btn_h + btn_spacing), btn_w, btn_h), "Proba AI", base_font=font_ai_difficulty_button),
-        "back": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 3*(btn_h + btn_spacing) + btn_spacing*2, btn_w, btn_h), "Back to Menu", base_font=font_ai_difficulty_button, color=(100,100,100), hover_color=(130,130,130))
+        "montecarlo": Button(((MENU_WIDTH - btn_w)//2, start_y_buttons + 3*(btn_h + btn_spacing), btn_w, btn_h), "Monte Carlo AI", base_font=font_ai_difficulty_button),
+        "bayes": Button(((MENU_WIDTH - btn_w)//2, start_y_buttons + 4*(btn_h + btn_spacing), btn_w, btn_h), "Bayesian AI", base_font=font_ai_difficulty_button),
+        "back": Button(((MENU_WIDTH - btn_w) // 2, start_y_buttons + 5*(btn_h + btn_spacing) + btn_spacing*2, btn_w, btn_h), "Back to Menu", base_font=font_ai_difficulty_button, color=(100,100,100), hover_color=(130,130,130))
     }
     selected_option = None
     original_caption = pygame.display.get_caption()[0]

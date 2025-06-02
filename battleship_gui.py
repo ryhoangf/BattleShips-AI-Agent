@@ -37,14 +37,16 @@ TOTAL_GRIDS_BLOCK_WIDTH = 2 * GRID_ACTUAL_SIZE + HORIZONTAL_GRID_PADDING_BETWEEN
 GRID_BLOCK_START_X = (REAL_WIDTH - TOTAL_GRIDS_BLOCK_WIDTH) // 2
 TOTAL_GRIDS_BLOCK_HEIGHT_NO_LABELS = 2 * GRID_ACTUAL_SIZE + VERTICAL_GRID_PADDING_BETWEEN
 GRID_BLOCK_START_Y_NO_LABELS = TOP_BANNER_HEIGHT + (available_height_for_grids_block - TOTAL_GRIDS_BLOCK_HEIGHT_NO_LABELS - 2 * ACTUAL_LABEL_HEIGHT_PER_ROW) // 2
-GRID_BLOCK_START_Y = GRID_BLOCK_START_Y_NO_LABELS
+GRID_BLOCK_START_Y = GRID_BLOCK_START_Y_NO_LABELS # Grids themselves start here; labels are drawn above this Y
 
-GREY_BG=(40,50,60); WHITE=(255,250,250); GREEN_SHIP=(30,200,130); BLUE_MISS=(40,150,220); RED_SUNK=(255,50,100)
-ORANGE_HIT=(255,150,30); UNKNOWN_COLOR=(70,80,90); HIGHLIGHT_BORDER=(255,255,0)
-BUTTON_COLOR_GAME=(100,100,150); BUTTON_HOVER_COLOR_GAME=(130,130,180)
-HEAT_TEXT_COLOR_LOW=(180,180,180); HEAT_TEXT_COLOR_HIGH=(255,255,100)
-COLORS={"U":UNKNOWN_COLOR,"M":BLUE_MISS,"H":ORANGE_HIT,"S":RED_SUNK}
-AI_MAP={"random":lambda g:g.random_ai(),"basic":lambda g:g.basic_ai(),"proba":lambda g:g.probabilistic_ai()}
+# Colors & AI Map (remain the same)
+GREY_BG = (40, 50, 60); WHITE = (255, 250, 250)
+GREEN_SHIP = (30, 200, 130); BLUE_MISS = (40, 150, 220)
+RED_SUNK = (255, 50, 100); ORANGE_HIT = (255, 150, 30)
+UNKNOWN_COLOR = (70, 80, 90); HIGHLIGHT_BORDER = (255, 255, 0)
+BUTTON_COLOR_GAME = (100, 100, 150); BUTTON_HOVER_COLOR_GAME = (130, 130, 180)
+COLORS = {"U": UNKNOWN_COLOR, "M": BLUE_MISS, "H": ORANGE_HIT, "S": RED_SUNK}
+AI_MAP = { "random": lambda g: g.random_ai(), "basic": lambda g: g.basic_ai(), "proba": lambda g: g.probabilistic_ai(), "montecarlo": lambda g: g.monte_carlo_ai(), "bayes": lambda g: g.bayesian_ai() }
 
 class InGameButton:
     def __init__(self, rect, text, font, tc=WHITE, bc=BUTTON_COLOR_GAME, hc=BUTTON_HOVER_COLOR_GAME): # Shorter param names
@@ -57,23 +59,34 @@ class InGameButton:
 
 def count_sunk_ships(search, target_player):return sum(all(search[i]=="S" for i in ship.indexes)for ship in target_player.ships)
 
-def draw_grid(player, left, top, search=True, active_grid=False, heat_map=None): # Renamed params
-    if search and active_grid:pygame.draw.rect(SCREEN,HIGHLIGHT_BORDER,(left-3,top-3,GRID_ACTUAL_SIZE+6,GRID_ACTUAL_SIZE+6),width=3,border_radius=5)
-    for i in range(100):
-        x=left+(i%10)*SQSIZE;y=top+(i//10)*SQSIZE;sq_r=pygame.Rect(x,y,SQSIZE,SQSIZE) # Shorter var names
-        pygame.draw.rect(SCREEN,COLORS["U"],sq_r);pygame.draw.rect(SCREEN,WHITE,sq_r,width=1)
-        if search:
-            if player.search[i]!="U":
-                cx=x+SQSIZE//2;cy=y+SQSIZE//2;rad_f=0.35 if SQSIZE>40 else 0.4 # Shorter var name
-                pygame.draw.circle(SCREEN,COLORS[player.search[i]],(cx,cy),radius=int(SQSIZE*rad_f))
-            elif heat_map and heat_map[i]>0:
-                hv=heat_map[i];tc=HEAT_TEXT_COLOR_HIGH if hv>20 else HEAT_TEXT_COLOR_LOW # Shorter var names
-                if hv<5:tc=(130,130,130)
-                hs=heat_value_font.render(str(hv),True,tc);hr=hs.get_rect(center=(x+SQSIZE//2,y+SQSIZE//2)) # Shorter var names
-                SCREEN.blit(hs,hr)
+# draw_grid (remains the same)
 
-def draw_ships(player,left,top):
-    ind=max(3,int(SQSIZE*0.12)) # Shorter var name
+def draw_grid(player, left, top, search=True, is_active_player_grid=False, show_heat=True, heat_map=None):
+    if search and is_active_player_grid:
+        pygame.draw.rect(SCREEN, HIGHLIGHT_BORDER, (left - 3, top - 3, GRID_ACTUAL_SIZE + 6, GRID_ACTUAL_SIZE + 6), width=3, border_radius=5)
+    for i in range(100):
+        x = left + (i % 10) * SQSIZE
+        y = top + (i // 10) * SQSIZE
+        square_rect = pygame.Rect(x, y, SQSIZE, SQSIZE)
+        pygame.draw.rect(SCREEN, COLORS["U"], square_rect)
+        pygame.draw.rect(SCREEN, WHITE, square_rect, width=1)
+
+        # Vẽ heat map chỉ khi là bảng Search!
+        if show_heat and heat_map is not None and player.search[i] == "U":
+            txt = stats_font.render(str(heat_map[i]), True, (255, 0, 0))
+            SCREEN.blit(txt, txt.get_rect(center=(x + SQSIZE // 2, y + SQSIZE // 2)))
+
+        if search and player.search[i] != "U":
+            cx = x + SQSIZE // 2
+            cy = y + SQSIZE // 2
+            radius_factor = 0.35 if SQSIZE > 40 else 0.4
+            pygame.draw.circle(SCREEN, COLORS[player.search[i]], (cx, cy), radius=int(SQSIZE * radius_factor))
+
+
+
+# draw_ships (remains the same)
+def draw_ships(player, left, top):
+    INDENT = max(3, int(SQSIZE * 0.12))
     for ship in player.ships:
         x=left+ship.col*SQSIZE+ind;y=top+ship.row*SQSIZE+ind
         w=ship.size*SQSIZE-2*ind if ship.orientation=="h" else SQSIZE-2*ind # Shorter var name
@@ -165,48 +178,84 @@ def run_game_loop(human1,human2,ai1_name=None,ai2_name=None):
     while anim:
         mp,mc=pygame.mouse.get_pos(),False # Shorter var names
         for evt in pygame.event.get():
-            if evt.type==pygame.QUIT:pygame.quit();exit()
-            if evt.type==pygame.KEYDOWN:
-                if evt.key==pygame.K_ESCAPE:anim=False
-                if evt.key==pygame.K_SPACE:paus=not paus
-                if evt.key==pygame.K_RETURN and game.over:game=Game(human1,human2);paus=False;hm_p1,hm_p2=None,None;pra=0 # Reset analysis on new game
-            exit_btn.is_hovered(mp);
-            if exit_btn.is_clicked(evt):anim=False
-            if ap1b:
-                ap1b.is_hovered(mp)
-                if ap1b.is_clicked(evt) and game.player1_turn:res=game.analyze_opponent_board(1);pra=1;hm_p1=res.get("heat_map")if res else None;hm_p2=None # Shorter var names
-            if ap2b:
-                ap2b.is_hovered(mp)
-                if ap2b.is_clicked(evt) and not game.player1_turn:res=game.analyze_opponent_board(2);pra=2;hm_p2=res.get("heat_map")if res else None;hm_p1=None # Shorter var names
-            if evt.type==pygame.MOUSEBUTTONDOWN and evt.button==1 and not paus and not game.over:
-                mc=True
-                if game.human1 and game.player1_turn and p1sr.collidepoint(mp):
-                    c,r=(mp[0]-p1sr.left)//SQSIZE,(mp[1]-p1sr.top)//SQSIZE # Shorter var names
-                    if 0<=r<10 and 0<=c<10 and game.player1.search[r*10+c]=='U':game.make_move(r*10+c);hm_p1=None;pra=0 # Clear heatmap on move
-                elif game.human2 and not game.player1_turn and p2sr.collidepoint(mp):
-                    c,r=(mp[0]-p2sr.left)//SQSIZE,(mp[1]-p2sr.top)//SQSIZE # Shorter var names
-                    if 0<=r<10 and 0<=c<10 and game.player2.search[r*10+c]=='U':game.make_move(r*10+c);hm_p2=None;pra=0 # Clear heatmap on move
-        if not anim:break
-        if not paus:
-            SCREEN.fill(GREY_BG);draw_turn_indicator(game);exit_btn.draw(SCREEN)
-            if ap1b:ap1b.draw(SCREEN)
-            if ap2b:ap2b.draw(SCREEN)
-            draw_labels(gm)
-            cp1h=hm_p1 if game.player1_turn and pra==1 else None # Shorter var names
-            cp2h=hm_p2 if not game.player1_turn and pra==2 else None # Shorter var names
-            draw_grid(game.player1,*gm["p1_search"],search=True,active_grid=game.player1_turn,heat_map=cp1h)
-            draw_grid(game.player2,*gm["p2_ships"],search=False)
-            draw_grid(game.player1,*gm["p1_ships"],search=False)
-            draw_grid(game.player2,*gm["p2_search"],search=True,active_grid=not game.player1_turn,heat_map=cp2h)
-            aivai=not game.human1 and not game.human2 # Shorter var name
-            if game.human1 or game.over or aivai:draw_ships(game.player1,*gm["p1_ships"])
-            if game.human2 or game.over or aivai:draw_ships(game.player2,*gm["p2_ships"])
-            isht=(game.human1 and game.player1_turn)or(game.human2 and not game.player1_turn) # Shorter var name
-            if not game.over and not isht:
-                pygame.time.wait(1000)
-                if not human1 and game.player1_turn and ai1_name:AI_MAP[ai1_name](game)
-                elif not human2 and not game.player1_turn and ai2_name:AI_MAP[ai2_name](game)
-            if pra!=0:draw_ai_analysis(game,pra,adar)
+            if evt.type == pygame.QUIT: pygame.quit(); exit()
+            if evt.type == pygame.KEYDOWN:
+                if evt.key == pygame.K_ESCAPE: animating = False
+                if evt.key == pygame.K_SPACE: pausing = not pausing
+                if evt.key == pygame.K_RETURN and game.over: game=Game(human1,human2); pausing=False
+            exit_button.is_hovered(m_pos)
+            if exit_button.is_clicked(evt): animating=False
+            if evt.type == pygame.MOUSEBUTTONDOWN and evt.button==1 and not pausing and not game.over:
+                m_clk=True
+                if game.human1 and game.player1_turn and p1_sr.collidepoint(m_pos):
+                    c=(m_pos[0]-p1_sr.left)//SQSIZE; r=(m_pos[1]-p1_sr.top)//SQSIZE
+                    if 0<=r<10 and 0<=c<10 and game.player1.search[r*10+c]=='U': game.make_move(r*10+c)
+                elif game.human2 and not game.player1_turn and p2_sr.collidepoint(m_pos):
+                    c=(m_pos[0]-p2_sr.left)//SQSIZE; r=(m_pos[1]-p2_sr.top)//SQSIZE
+                    if 0<=r<10 and 0<=c<10 and game.player2.search[r*10+c]=='U': game.make_move(r*10+c)
+        if not animating: break
+
+        if not pausing:
+            SCREEN.fill(GREY_BG)
+            # Ở trong run_game_loop, mỗi frame:
+            heat_map = None
+            if not game.over:
+                is_ai_turn = (not human1 and game.player1_turn and ai1_name == "proba") or (not human2 and not game.player1_turn and ai2_name == "proba")
+                if is_ai_turn:
+                    heat_map = game.compute_heat_map()
+            # Draw top banner elements
+            draw_turn_indicator(game)
+            exit_button.draw(SCREEN)
+            
+            # Draw grid block (labels then grids)
+            draw_labels(grid_map)
+           # Player 1 Search
+            draw_grid(
+                game.player1,
+                *grid_map["p1_search"],
+                search=True,
+                is_active_player_grid=game.player1_turn,
+                show_heat=(game.player1_turn and heat_map is not None),
+                heat_map=(heat_map if game.player1_turn else None)
+            )
+            # Player 2 Ships (không bao giờ show heat)
+            draw_grid(game.player2, *grid_map["p2_ships"], search=False, show_heat=False)
+            # Player 1 Ships (không bao giờ show heat)
+            draw_grid(game.player1, *grid_map["p1_ships"], search=False, show_heat=False)
+            # Player 2 Search
+            draw_grid(
+                game.player2,
+                *grid_map["p2_search"],
+                search=True,
+                is_active_player_grid=not game.player1_turn,
+                show_heat=(not game.player1_turn and heat_map is not None),
+                heat_map=(heat_map if not game.player1_turn else None)
+            )
+
+
+            
+            is_aivai_mode = not game.human1 and not game.human2
+            
+            if game.human1 or game.over or is_aivai_mode: draw_ships(game.player1,*grid_map["p1_ships"])
+            if game.human2 or game.over or is_aivai_mode: draw_ships(game.player2,*grid_map["p2_ships"])
+
+            is_h_turn = (game.human1 and game.player1_turn) or (game.human2 and not game.player1_turn)
+
+# AI move logic with 1-second delay
+            if not game.over and not is_h_turn:
+                if not ai_waiting:
+                    ai_waiting = True
+                    ai_wait_start = pygame.time.get_ticks()
+                else:
+                    if pygame.time.get_ticks() - ai_wait_start >= 1000:  # Delay 1s
+                        if not human1 and game.player1_turn and ai1_name:
+                           AI_MAP[ai1_name](game)
+                        elif not human2 and not game.player1_turn and ai2_name:
+                            AI_MAP[ai2_name](game)
+                        ai_waiting = False
+
+            
+            # Game Over Text (if applicable)
             if game.over:
                 wt=("P1 WINS!" if game.human1 else "AI 1 WINS!")if game.result==1 else("P2 WINS!" if game.human2 else "AI 2 WINS!") # Shorter var name
                 ts=result_font.render(wt,True,ORANGE_HIT); # Shorter var name

@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 class Ship:
     def __init__(self, size):
@@ -51,33 +52,11 @@ class Player:
                 if possible:
                     self.ships.append(temp_ship_for_placement)
                     placed = True
-            if not placed:
-                print(f"Warning: Could not place ship of size {size} after {attempts} attempts.")
 
-    def show_ships(self):
-        indexes_display  = ["-" for _ in range (100)]
-        for i_idx in self.indexes:
-            if 0 <= i_idx < 100: indexes_display[i_idx] = "X"
-        for r_idx in range(10):
-            print(" ".join(indexes_display[r_idx*10 : (r_idx+1)*10]))
+   
 
-    def get_remaining_ship_sizes(self, search_grid_of_opponent):
-        current_remaining_sizes = []
-        for ship_obj in self.ships:
-            current_remaining_sizes.append(ship_obj.size)
-        sunk_ships_accounted_for_indices = set()
-        for i, ship in enumerate(self.ships):
-            if i in sunk_ships_accounted_for_indices: continue 
-            is_fully_sunk = True
-            if not ship.indexes: continue
-            for ship_idx in ship.indexes:
-                if not (0 <= ship_idx < 100 and search_grid_of_opponent[ship_idx] == "S"):
-                    is_fully_sunk = False; break
-            if is_fully_sunk:
-                if ship.size in current_remaining_sizes:
-                    current_remaining_sizes.remove(ship.size)
-                    sunk_ships_accounted_for_indices.add(i)
-        return current_remaining_sizes
+#p = Player()
+#p.show_ships()
 
 class Game:
     def __init__(self, human1, human2):
@@ -146,76 +125,212 @@ class Game:
 
     def basic_ai(self):
         search = self.player1.search if self.player1_turn else self.player2.search
-        unknown = [i for i, sq in enumerate(search) if sq == "U"]; hits = [i for i, sq in enumerate(search) if sq == "H"]
-        if not unknown: return 
-        adj_to_hits = set()
-        for h_idx in hits:
-            for offset in [-1, 1, -10, 10]:
-                neighbor = h_idx + offset
-                if 0 <= neighbor < 100 and search[neighbor] == "U":
-                    if (offset == -1 or offset == 1) and (neighbor // 10 == h_idx // 10): adj_to_hits.add(neighbor)
-                    elif (offset == -10 or offset == 10): adj_to_hits.add(neighbor)
-        if adj_to_hits: self.make_move(random.choice(list(adj_to_hits))); return
-        checkerboard_unknown = [u for u in unknown if (u // 10 + u % 10) % 2 == 0]
-        if checkerboard_unknown: self.make_move(random.choice(checkerboard_unknown)); return
-        if unknown: self.make_move(random.choice(unknown))
+        unknown = [i for i, square in enumerate(search) if square == "U"]
+        hits = [i for i, square in enumerate(search) if square == "H"]
+        #search neighbor of hits
+        unknown_with_neighbor_hit1 = []
+        unknown_with_neighbor_hit2 = []
+        for u in unknown:
+            if u + 1 in hits or u - 1 in hits or u - 10 in hits or u + 10 in hits:
+                unknown_with_neighbor_hit1.append(u)
+            if u+2 in hits or u-2 in hits or u - 20 in hits or u + 20 in hits:
+                unknown_with_neighbor_hit2.append(u)
+                
+        #pick "U" square with direct and level 2 neighbor both marked as "H"
+        for u in unknown:
+            if u in unknown_with_neighbor_hit1 and u in unknown_with_neighbor_hit2:
+                self.make_move(u)
+                return
+        
+        #pick "U" square that has a neighbor marked as "H"
+        if len(unknown_with_neighbor_hit1) > 0:
+            self.make_move(random.choice(unknown_with_neighbor_hit1))
+            return
+        
+        #checker board pattern
+        checker_board = []
+        for u in unknown:
+            row = u // 10
+            col = u % 10
+            if (row+col)%2 == 0:
+                checker_board.append(u)
+        if len(checker_board) > 0:
+            self.make_move(random.choice(checker_board))
+            return
+        #random move
+        self.random_ai()
 
-    def _calculate_heat_map(self, search_grid, hit_squares, remaining_ship_sizes_on_opponent_board):
-        heat = [0] * 100
-        def fit(start, size, ori, current_search_grid):
-            row, col = start // 10, start % 10
-            idxs = [start + o if ori == "h" else start + o * 10 for o in range(size)]
-            if ori == "h" and col + size > 10: return False, []
-            if ori == "v" and row + size > 10: return False, []
-            if any(idx not in range(100) or current_search_grid[idx] in ("M", "S") for idx in idxs): return False,[]
+    def compute_heat_map(self):
+        """Trả về list heat[0..99] cho player hiện tại."""
+        search = (self.player1 if self.player1_turn else self.player2).search
+        hits    = [i for i, sq in enumerate(search) if sq == "H"]
+        # 1) tính remaining ships
+        sunk = []; visited = set()
+        for i, sq in enumerate(search):
+            if sq == "S" and i not in visited:
+                group, stack = {i}, [i]
+                while stack:
+                    cur = stack.pop()
+                    for n in (cur+1,cur-1,cur+10,cur-10):
+                        if 0 <= n < 100 and search[n]=="S" and n not in group:
+                            group.add(n); stack.append(n)
+                visited |= group; sunk.append(len(group))
+        remaining = [5,4,3,3,2]
+        for s in sunk:
+            if s in remaining: remaining.remove(s)
+
+        # 2) build heat
+        heat = [0]*100
+        def fit(start,size,ori):
+            row,col = divmod(start,10)
+            idxs = [start + (o if ori=="h" else o*10) for o in range(size)]
+            if ori=="h" and col+size>10: return False,[]
+            if ori=="v" and row+size>10: return False,[]
+            if any(search[i] in ("M","S") for i in idxs): return False,[]
             return True, idxs
-        for sz in remaining_ship_sizes_on_opponent_board:
-            for st_idx in range(100):
-                for ori in ("h", "v"):
-                    ok, idxs_list = fit(st_idx, sz, ori, search_grid)
-                    if ok:
-                        bonus = 1 + sum(1 for h_idx in hit_squares if h_idx in idxs_list)
-                        for current_idx in idxs_list:
-                            if search_grid[current_idx] == "U": heat[current_idx] += bonus
+
+        for sz in remaining:
+            for st in range(100):
+                for ori in ("h","v"):
+                    ok, idxs = fit(st, sz, ori)
+                    if not ok: continue
+                    bonus = 1 + sum(1 for h in hits if h in idxs)
+                    for i in idxs:
+                        if search[i]=="U": heat[i] += bonus
+
+        # --- 3) Boost quanh các ô 'H' ---
+        target_boost = 10    # hệ số boost cho các ô kề một hit đơn lẻ
+        line_boost   = 20    # hệ số boost cho hai đầu mút của chuỗi H liên tiếp
+
+        # 3.1 Gom các chuỗi H liên tiếp (cả ngang lẫn dọc)
+        lines = []   # sẽ chứa list các chỉ số theo chuỗi H
+        seen  = set()  # để không xét lại cùng một hit
+
+        for h in hits:
+            if h in seen:
+                continue
+
+            # --- Gom ngang ---
+            hor = [h]
+            cur = h + 1
+            # mở rộng về bên phải
+            while cur % 10 != 0 and search[cur] in ("H", "S"):
+                hor.append(cur)
+                seen.add(cur)
+                cur += 1
+            # mở rộng về bên trái
+            cur = h - 1
+            while cur % 10 != 9 and cur >= 0 and search[cur] in ("H", "S"):
+                hor.insert(0, cur)
+                seen.add(cur)
+                cur -= 1
+
+            if len(hor) > 1:
+                lines.append(hor)
+                seen.update(hor)
+                continue  # nếu đã là chuỗi ngang thì bỏ qua xét dọc
+
+            # --- Gom dọc ---
+            ver = [h]
+            cur = h + 10
+            # mở rộng xuống dưới
+            while cur < 100 and search[cur] in ("H", "S"):
+                ver.append(cur)
+                seen.add(cur)
+                cur += 10
+            # mở rộng lên trên
+            cur = h - 10
+            while cur >= 0 and search[cur] in ("H", "S"):
+                ver.insert(0, cur)
+                seen.add(cur)
+                cur -= 10
+
+            if len(ver) > 1:
+                lines.append(ver)
+                seen.update(ver)
+
+        # 3.2 Boost 2 đầu mút của từng chuỗi H
+        for line in lines:
+            a, b = line[0], line[-1]  # index đầu và cuối của chuỗi
+            if b - a < 10:
+            # chuỗi ngang ⇒ tăng heat cho ô bên trái và phải
+                for n in (b + 1, a - 1):
+                    if 0 <= n < 100 and search[n] == "U":
+                        heat[n] *= line_boost
+            else:
+            # chuỗi dọc ⇒ tăng heat cho ô trên và dưới
+                for n in (b + 10, a - 10):
+                    if 0 <= n < 100 and search[n] == "U":
+                        heat[n] *= line_boost
+
+        # 3.3 Boost xung quanh từng hit đơn lẻ (nếu không thuộc chuỗi nào)
+        for h in hits:
+            for n in (h + 1, h - 1, h + 10, h - 10):
+                if 0 <= n < 100 and search[n] == "U":
+                    heat[n] *= target_boost
         return heat
 
-    def analyze_opponent_board(self, for_player_num):
-        if for_player_num == 1: player = self.player1; opponent = self.player2
-        else: player = self.player2; opponent = self.player1
-        search_grid = player.search
-        remaining_ships_on_opponent = opponent.get_remaining_ship_sizes(search_grid)
-        unknown_squares = [i for i, sq in enumerate(search_grid) if sq == "U"]
-        hit_squares = [i for i, sq in enumerate(search_grid) if sq == "H"]
-        heat_map_calculated = self._calculate_heat_map(search_grid, hit_squares, remaining_ships_on_opponent)
-        hottest_square_idx = -1; max_heat = -1
-        if unknown_squares:
-            for i in unknown_squares:
-                if heat_map_calculated[i] > max_heat: max_heat = heat_map_calculated[i]; hottest_square_idx = i
-        analysis = {
-            "remaining_ships": remaining_ships_on_opponent, 
-            "hottest_square": hottest_square_idx, 
-            "max_heat_value": max_heat,
-            "heat_map": heat_map_calculated
-        }
-        self.analysis_results[for_player_num] = analysis
-        return analysis
 
-    def probabilistic_ai(self): # AI này vẫn dùng để bắn
+
+    # ---------------------------------------------------------------------
+    # Probabilistic AI — Heat‑map full xác suất + boost quanh H
+    # ---------------------------------------------------------------------
+    def probabilistic_ai(self):
         player = self.player1 if self.player1_turn else self.player2
-        opponent = self.player2 if self.player1_turn else self.player1
-        search = player.search
-        unknown = [i for i, sq in enumerate(search) if sq == "U"]
-        hits = [i for i, sq in enumerate(search) if sq == "H"] # Chỉ các ô 'H'
-        
-        if not unknown: return
+        search = player.search # Danh sách 100 ô ["U", "M", "H", "S"]
+        unknown = [i for i, sq in enumerate(search) if sq == "U"] #Tập các ô có thể bắn tiếp.
+        hits    = [i for i, sq in enumerate(search) if sq == "H"] #Tập các ô đã bắn trúng tàu nhưng chưa chìm.
+        if not unknown:
+            return
+        # 1) tìm kích thước tàu chưa chìm bằng cách gom nhóm S
+        sunk = [] #lưu lại kích thước các tàu đã chìm
+        visited = set() # lưu lại tất cả các ô 'S' đã được duyệt
+        for i, sq in enumerate(search):
+            if sq == "S" and i not in visited:
+                group = {i}; stack = [i] # dùng  set{} để tăng tốc độ tìm kiếm O(1), sử dụng stack để duyệt DFS
+                while stack:
+                    cur = stack.pop()
+                    for n in (cur+1,cur-1,cur+10,cur-10):   # 4 hướng lân cận
+                        if 0 <= n < 100 and search[n] == "S" and n not in group:
+                            group.add(n); stack.append(n)
+                visited |= group; sunk.append(len(group))   # sau khi gom xong cụm thêm toàn bộ ô trong group vào visited, tránh xử lý lại
+        remaining = [5,4,3,3,2]
+        for s in sunk:
+            if s in remaining: remaining.remove(s)
+        # 2) Heat‑map: quét mọi vị trí có thể của mỗi tàu còn lại
+        """Mục tiêu của bước này là xây dựng một bản đồ "heat" gồm 100 ô (tương ứng với 10x10 bàn cờ), phản ánh xác suất có tàu tại mỗi ô "U" (chưa biết). 
+        Xác suất này được tính dựa trên các vị trí hợp lệ mà các tàu chưa chìm còn có thể nằm."""
 
-        remaining = opponent.get_remaining_ship_sizes(search)
-        heat = self._calculate_heat_map(search, hits, remaining) 
+        # Mỗi phần tử trong heat[i] sẽ biểu thị mức độ nghi ngờ (độ nóng) rằng có tàu tại ô thứ i.
+        heat = [0]*100 
         
-        TARGET_BOOST_SINGLE_H = 50     
-        LINE_BOOST_ENDS = 10000        
-        priority_targets = [] 
+        """Duyệt qua từng tàu trong remaining, thử đặt tại mọi ô (0 → 99) theo cả hướng ngang ("h") và dọc ("v").
+           Hàm fit(start, size, ori) đảm nhiệm việc kiểm tra tính hợp lệ:"""
+        
+        def fit(start,size,ori): #kiểm tra xem tàu có vừa ở vị trí start theo hướng "h" hoặc "v" không.
+            row,col = start//10, start%10
+            idxs=[start+o if ori=="h" else start+o*10 for o in range(size)] #Tạo mảng `idxs` chứa **chỉ số tất cả các ô con tàu đi qua**.
 
+            # Kiểm tra tràn biên
+            if ori=="h" and col+size>10: return False,[]
+            if ori=="v" and row+size>10: return False,[]
+
+            # Nếu có ô nào đã là `"M"` (bắn hụt) hoặc `"S"` (tàu chìm) → **không thể đặt tàu ở đây**.
+            if any(search[i] in ("M","S") for i in idxs): return False,[]
+            return True,idxs
+        
+        for sz in remaining:
+            for st in range(100):   #duyệt mọi ô từ 0 đến 99 để đặt thử tàu
+                for ori in ("h","v"): # thử cả 2 hướng ngang và dọc
+                    ok,idxs=fit(st,sz,ori)
+                    if ok:  # nếu tàu có thể đặt ở vị trí này thì mới cộng heat
+                        bonus=1+sum(1 for h in hits if h in idxs) # nếu đặt vị trí này không trùng hit nào thì bonus=1, nếu trùng 1 hit thì bonus=2, trùng 2 hit thì bonus=3...
+                        for idx in idxs:
+                            if search[idx]=="U": heat[idx]+=bonus
+
+
+       # 3) Boost quanh H
+        target_boost, line_boost = 10, 20
         if hits:
             lines, seen_in_lines = [], set()
             sorted_hits = sorted(list(hits))
@@ -292,3 +407,128 @@ class Game:
         parity_best = [b_idx for b_idx in best_moves if (b_idx // 10 + b_idx % 10) % 2 == 0]
         move = random.choice(parity_best) if parity_best else random.choice(best_moves)
         self.make_move(move)
+    
+
+    def monte_carlo_ai(self, n_sim=500):
+        search = self.player1.search if self.player1_turn else self.player2.search
+        hits = [i for i, sq in enumerate(search) if sq == "H"]
+        misses = [i for i, sq in enumerate(search) if sq == "M"]
+        unknown = [i for i, sq in enumerate(search) if sq == "U"]
+        # Xác định các tàu còn lại
+        sunk = []
+        visited = set()
+        for i, sq in enumerate(search):
+            if sq == "S" and i not in visited:
+                group, stack = {i}, [i]
+                while stack:
+                    cur = stack.pop()
+                    for n in (cur+1,cur-1,cur+10,cur-10):
+                        if 0 <= n < 100 and search[n]=="S" and n not in group:
+                            group.add(n); stack.append(n)
+                visited |= group; sunk.append(len(group))
+        remaining = [5,4,3,3,2]
+        for s in sunk:
+            if s in remaining: remaining.remove(s)
+
+        # Monte Carlo: sinh n_sim bàn cờ hợp lệ
+        counts = np.zeros(100)
+        for _ in range(n_sim):
+            board = np.zeros(100, dtype=bool)
+            ships = []
+            for sz in remaining:
+                placed = False
+                for _ in range(100):  # thử tối đa 100 lần cho mỗi tàu
+                    ori = np.random.choice(["h", "v"])
+                    if ori == "h":
+                        row = np.random.randint(0, 10)
+                        col = np.random.randint(0, 11 - sz)
+                        idxs = [row*10 + col + i for i in range(sz)]
+                    else:
+                        row = np.random.randint(0, 11 - sz)
+                        col = np.random.randint(0, 10)
+                        idxs = [row*10 + col + i*10 for i in range(sz)]
+                    # Kiểm tra hợp lệ
+                    if any(board[i] for i in idxs): continue
+                    if any(i in misses for i in idxs): continue
+                    if hits and not all(h in idxs for h in hits if h not in [i for s in ships for i in s]): continue
+                    placed = True
+                    for i in idxs: board[i] = True
+                    ships.append(idxs)
+                    break
+                if not placed:
+                    break  # không đặt được tàu này, bỏ qua bàn cờ này
+            else:
+                # Nếu đặt đủ tất cả tàu
+                for i in unknown:
+                    if board[i]: counts[i] += 1
+
+        # Chọn ô có xác suất cao nhất
+        if np.sum(counts) == 0:
+            move = np.random.choice(unknown)
+        else:
+            best = np.argwhere(counts == np.amax(counts)).flatten()
+            move = np.random.choice(best)
+        self.make_move(move)
+
+    def bayesian_ai(self):
+        search = self.player1.search if self.player1_turn else self.player2.search
+        unknown = [i for i, sq in enumerate(search) if sq == "U"]
+        hits = [i for i, sq in enumerate(search) if sq == "H"]
+        misses = [i for i, sq in enumerate(search) if sq == "M"]
+        # Khởi tạo xác suất đều
+        prob = {i: 1.0 for i in unknown}
+        # Nếu có hit, tăng xác suất các ô lân cận
+        for h in hits:
+            for n in (h+1, h-1, h+10, h-10):
+                if 0 <= n < 100 and n in prob:
+                    prob[n] *= 3  # tăng mạnh xác suất quanh hit
+        # Nếu có miss, giảm xác suất các ô lân cận
+        for m in misses:
+            for n in (m+1, m-1, m+10, m-10):
+                if 0 <= n < 100 and n in prob:
+                    prob[n] *= 0.5  # giảm xác suất quanh miss
+        # Bình thường hóa
+        total = sum(prob.values())
+        if total > 0:
+            for k in prob:
+                prob[k] /= total
+        # Chọn ô có xác suất cao nhất
+        best = [k for k, v in prob.items() if v == max(prob.values())]
+        move = np.random.choice(best)
+        self.make_move(move)
+
+AI_MAP = {
+    "random": lambda game: game.random_ai(),
+    "basic": lambda game: game.basic_ai(),
+    "proba": lambda game: game.probabilistic_ai(),
+    "montecarlo": lambda game: game.monte_carlo_ai(),
+    "bayes": lambda game: game.bayesian_ai()
+}
+
+""" 
+   Ý tưởng:
+    Tính xác suất xuất hiện của tàu ở từng ô "U" => chọn ra ô có xác suất cao nhất để bắn.
+    Bản chất thuật toán: Bayesian-like heuristic (xấp xỉ xác suất theo mô hình cấu trúc)
+    Quy trình:
+     1. Xác định các tàu chưa chìm:
+        Duyệt qua các ô "S" -> gom nhóm để biết kích thước các tàu đã chìm => danh sách tàu còn lại
+     2. Xây dựng Heat-map:
+        Tạo heat[100] = 0
+        Với mỗi tàu trong danh sách còn lại:
+            Duyệt mọi ví trí có thể đặt tàu (0-99) theo cả 2 hướng "h" và "v"
+            Nếu vị trí đặt hợp lệ (không trùng "M" hay "S"):
+                Cộng điểm vào heat[i] cho mỗi i nằm trong vùng tàu
+                Nếu i trùng "H" thì cộng thêm điểm (bonus) để ưu tiên bắn vào ô đó
+                => tạo bản đồ nhiệt, phản ánh xác suất có tàu tại mỗi ô "U"
+     3. Boost quanh ô "H":
+        Gom các "H" liên tiếp thành chuỗi (horizontal/vertical) => xác định hướng tàu, tạo danh sách lines[] lưu các chuỗi "H" liền mạch
+        Boost 2 đầu mút với mỗi chuỗi "H" vì tàu chưa chìm có thể kéo thêm về 2 đầu
+        Boost "H" đơn: "H" đơn có thể là đầu mút của tàu chưa phát hiện, boost 4 hướng xung quanh
+     4. Ra quyết định chọn hướng đi
+        Từ heat[], tìm ô "U" có xác suất cao nhất
+        Nếu có nhiều ô cùng xác suất cao, ưu tiên ô có parity 0 (ô màu sáng trong checkerboard)
+        Chọn ngẫu nhiên trong các ô đó để bắn
+
+Probabilistic AI là một chiến lược heuristic-based, kết hợp luật game (tàu dài ≥2, không chồng lên nhau) với heat-map xác suất và tăng cường dữ kiện "H" để đưa ra nước đi tối ưu.
+-> Nó không học, không dự đoán thống kê, mà là một cách tính toán xác suất "giả định thông minh" từ toàn bộ trạng thái bàn cờ.
+"""
