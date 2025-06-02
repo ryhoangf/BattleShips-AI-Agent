@@ -8,6 +8,8 @@ from itertools import combinations
 from engine import Game
 import matplotlib.pyplot as plt
 from collections import defaultdict
+import matplotlib.pyplot as plt
+from collections import defaultdict
 
 # Danh sách các AI hiện có
 AI_MAP = {

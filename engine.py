@@ -51,11 +51,7 @@ class Player:
                     self.ships.append(ship)
                     placed = True
 
-
-    def show_ships(self):
-        indexes  = ["-" if i not in self.indexes else "X" for i in range (100)]
-        for row in range(10):
-            print(" ". join(indexes[(row-1)*10:row*10]))
+   
 
 #p = Player()
 #p.show_ships()
@@ -162,6 +158,118 @@ class Game:
         #random move
         self.random_ai()
 
+    def compute_heat_map(self):
+        """Trả về list heat[0..99] cho player hiện tại."""
+        search = (self.player1 if self.player1_turn else self.player2).search
+        hits    = [i for i, sq in enumerate(search) if sq == "H"]
+        # 1) tính remaining ships
+        sunk = []; visited = set()
+        for i, sq in enumerate(search):
+            if sq == "S" and i not in visited:
+                group, stack = {i}, [i]
+                while stack:
+                    cur = stack.pop()
+                    for n in (cur+1,cur-1,cur+10,cur-10):
+                        if 0 <= n < 100 and search[n]=="S" and n not in group:
+                            group.add(n); stack.append(n)
+                visited |= group; sunk.append(len(group))
+        remaining = [5,4,3,3,2]
+        for s in sunk:
+            if s in remaining: remaining.remove(s)
+
+        # 2) build heat
+        heat = [0]*100
+        def fit(start,size,ori):
+            row,col = divmod(start,10)
+            idxs = [start + (o if ori=="h" else o*10) for o in range(size)]
+            if ori=="h" and col+size>10: return False,[]
+            if ori=="v" and row+size>10: return False,[]
+            if any(search[i] in ("M","S") for i in idxs): return False,[]
+            return True, idxs
+
+        for sz in remaining:
+            for st in range(100):
+                for ori in ("h","v"):
+                    ok, idxs = fit(st, sz, ori)
+                    if not ok: continue
+                    bonus = 1 + sum(1 for h in hits if h in idxs)
+                    for i in idxs:
+                        if search[i]=="U": heat[i] += bonus
+
+        # --- 3) Boost quanh các ô 'H' ---
+        target_boost = 10    # hệ số boost cho các ô kề một hit đơn lẻ
+        line_boost   = 20    # hệ số boost cho hai đầu mút của chuỗi H liên tiếp
+
+        # 3.1 Gom các chuỗi H liên tiếp (cả ngang lẫn dọc)
+        lines = []   # sẽ chứa list các chỉ số theo chuỗi H
+        seen  = set()  # để không xét lại cùng một hit
+
+        for h in hits:
+            if h in seen:
+                continue
+
+            # --- Gom ngang ---
+            hor = [h]
+            cur = h + 1
+            # mở rộng về bên phải
+            while cur % 10 != 0 and search[cur] in ("H", "S"):
+                hor.append(cur)
+                seen.add(cur)
+                cur += 1
+            # mở rộng về bên trái
+            cur = h - 1
+            while cur % 10 != 9 and cur >= 0 and search[cur] in ("H", "S"):
+                hor.insert(0, cur)
+                seen.add(cur)
+                cur -= 1
+
+            if len(hor) > 1:
+                lines.append(hor)
+                seen.update(hor)
+                continue  # nếu đã là chuỗi ngang thì bỏ qua xét dọc
+
+            # --- Gom dọc ---
+            ver = [h]
+            cur = h + 10
+            # mở rộng xuống dưới
+            while cur < 100 and search[cur] in ("H", "S"):
+                ver.append(cur)
+                seen.add(cur)
+                cur += 10
+            # mở rộng lên trên
+            cur = h - 10
+            while cur >= 0 and search[cur] in ("H", "S"):
+                ver.insert(0, cur)
+                seen.add(cur)
+                cur -= 10
+
+            if len(ver) > 1:
+                lines.append(ver)
+                seen.update(ver)
+
+        # 3.2 Boost 2 đầu mút của từng chuỗi H
+        for line in lines:
+            a, b = line[0], line[-1]  # index đầu và cuối của chuỗi
+            if b - a < 10:
+            # chuỗi ngang ⇒ tăng heat cho ô bên trái và phải
+                for n in (b + 1, a - 1):
+                    if 0 <= n < 100 and search[n] == "U":
+                        heat[n] *= line_boost
+            else:
+            # chuỗi dọc ⇒ tăng heat cho ô trên và dưới
+                for n in (b + 10, a - 10):
+                    if 0 <= n < 100 and search[n] == "U":
+                        heat[n] *= line_boost
+
+        # 3.3 Boost xung quanh từng hit đơn lẻ (nếu không thuộc chuỗi nào)
+        for h in hits:
+            for n in (h + 1, h - 1, h + 10, h - 10):
+                if 0 <= n < 100 and search[n] == "U":
+                    heat[n] *= target_boost
+        return heat
+
+
+
     # ---------------------------------------------------------------------
     # Probabilistic AI — Heat‑map full xác suất + boost quanh H
     # ---------------------------------------------------------------------
@@ -220,7 +328,7 @@ class Game:
 
 
        # 3) Boost quanh H
-        target_boost, line_boost = 100, 500
+        target_boost, line_boost = 10, 20
         if hits:
             lines, seen = [], set()  # Chuỗi H liên tiếp và các ô đã xử lý
             for h in hits:
