@@ -64,7 +64,7 @@ RED_SUNK = (255, 50, 100); ORANGE_HIT = (255, 150, 30)
 UNKNOWN_COLOR = (70, 80, 90); HIGHLIGHT_BORDER = (255, 255, 0)
 BUTTON_COLOR_GAME = (100, 100, 150); BUTTON_HOVER_COLOR_GAME = (130, 130, 180)
 COLORS = {"U": UNKNOWN_COLOR, "M": BLUE_MISS, "H": ORANGE_HIT, "S": RED_SUNK}
-AI_MAP = { "random": lambda g: g.random_ai(), "basic": lambda g: g.basic_ai(), "proba": lambda g: g.probabilistic_ai() }
+AI_MAP = { "random": lambda g: g.random_ai(), "basic": lambda g: g.basic_ai(), "proba": lambda g: g.probabilistic_ai(), "montecarlo": lambda g: g.monte_carlo_ai(), "bayes": lambda g: g.bayesian_ai() }
 
 # InGameButton class (remains the same)
 class InGameButton:
