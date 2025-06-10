@@ -8,8 +8,6 @@ from itertools import combinations
 from engine import Game
 import matplotlib.pyplot as plt
 from collections import defaultdict
-import matplotlib.pyplot as plt
-from collections import defaultdict
 from scipy.stats import gaussian_kde
 
 # Danh sách các AI hiện có
@@ -214,16 +212,24 @@ class AIAnalyzer:
 
     def plot_results(self):
         """Tạo các biểu đồ trực quan hóa cho kết quả giải đấu."""
-        # Tạo hình với các biểu đồ con
+        # Tạo hình với các biểu đồ con và điều chỉnh khoảng cách
         fig = plt.figure(figsize=(15, 10))
+        plt.subplots_adjust(
+            left=0.1,      # Khoảng cách từ lề trái
+            right=0.9,     # Khoảng cách từ lề phải
+            bottom=0.1,    # Khoảng cách từ lề dưới
+            top=0.9,       # Khoảng cách từ lề trên
+            wspace=0.3,    # Khoảng cách ngang giữa các subplot
+            hspace=0.4     # Khoảng cách dọc giữa các subplot
+        )
 
         # 1. So sánh tỷ lệ thắng
         ax1 = plt.subplot(2, 3, 1)
         sorted_ais = sorted(self.ais, key=lambda ai: self.summary[ai]['win_rate'])
         win_rates = [self.summary[ai]['win_rate'] for ai in sorted_ais]
         bars = ax1.barh([ai.upper() for ai in sorted_ais], win_rates, color='skyblue')
-        ax1.set_title('Win Rates')
-        ax1.set_xlabel('Win Rate')
+        ax1.set_title('Win Rates', pad=20)  # Thêm padding cho tiêu đề
+        ax1.set_xlabel('Win Rate', labelpad=10)  # Thêm padding cho nhãn trục
         ax1.set_xlim(0, 1)
         for bar in bars:
             width = bar.get_width()
@@ -235,8 +241,8 @@ class AIAnalyzer:
         sorted_by_shots = sorted(self.ais, key=lambda ai: self.summary[ai]['avg_shots'])
         avg_shots = [self.summary[ai]['avg_shots'] for ai in sorted_by_shots]
         bars = ax2.barh([ai.upper() for ai in sorted_by_shots], avg_shots, color='lightgreen')
-        ax2.set_title('Average Shots')
-        ax2.set_xlabel('Shots')
+        ax2.set_title('Average Shots', pad=20)
+        ax2.set_xlabel('Shots', labelpad=10)
         for bar in bars:
             width = bar.get_width()
             ax2.text(width + 0.5, bar.get_y() + bar.get_height() / 2, f'{width:.1f}',
@@ -246,8 +252,8 @@ class AIAnalyzer:
         ax3 = plt.subplot(2, 3, 3)
         shot_data = [self.summary[ai]['shots'] for ai in self.ais]
         ax3.boxplot(shot_data, vert=False, tick_labels=[ai.upper() for ai in self.ais])
-        ax3.set_title('Shot Distribution')
-        ax3.set_xlabel('Number of Shots')
+        ax3.set_title('Shot Distribution', pad=20)
+        ax3.set_xlabel('Number of Shots', labelpad=10)
 
         # 4. Bản đồ nhiệt tỷ lệ thắng
         ax4 = plt.subplot(2, 3, 4)
@@ -258,12 +264,12 @@ class AIAnalyzer:
                     matrix[i, j] = self.summary[ai1]['opponents'][ai2]['win_rate']
 
         im = ax4.imshow(matrix, cmap='YlGnBu')
-        ax4.set_title('Win Rate Matrix')
+        ax4.set_title('Win Rate Matrix', pad=20)
         ax4.set_xticks(range(len(self.ais)))
         ax4.set_yticks(range(len(self.ais)))
-        ax4.set_xticklabels([ai.upper() for ai in self.ais])
+        ax4.set_xticklabels([ai.upper() for ai in self.ais], rotation=45)  # Xoay nhãn 45 độ
         ax4.set_yticklabels([ai.upper() for ai in self.ais])
-        plt.colorbar(im, ax=ax4)
+        plt.colorbar(im, ax=ax4, pad=0.1)  # Thêm padding cho colorbar
 
         # Thêm chú thích văn bản vào bản đồ nhiệt
         for i in range(len(self.ais)):
@@ -285,10 +291,13 @@ class AIAnalyzer:
             else:
                 ax5.plot(shots, [1], 'o', label=ai.upper())
 
-        ax5.set_title('Shot Distribution (Smoothed)')
-        ax5.set_xlabel('Number of Shots')
-        ax5.set_ylabel('Frequency')
-        ax5.legend()
+        ax5.set_title('Shot Distribution (Smoothed)', pad=20)
+        ax5.set_xlabel('Number of Shots', labelpad=10)
+        ax5.set_ylabel('Frequency', labelpad=10)
+        ax5.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # Di chuyển legend ra ngoài
+
+        # Điều chỉnh layout tổng thể
+        plt.tight_layout()
         plt.show()
 
     def save_results(self, filename):
