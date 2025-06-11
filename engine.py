@@ -69,8 +69,18 @@ class Game:
         self.shots_p1 = 0
         self.shots_p2 = 0
         self.n_shots = 0
+        self.last_shot = None  # Thêm thuộc tính để theo dõi vị trí bắn cuối cùng
+    
+    def get_ship_size(self, player_num, pos):
+        """Xác định kích thước của tàu tại vị trí pos cho người chơi player_num."""
+        player = self.player1 if player_num == 1 else self.player2
+        for ship in player.ships:
+            if pos in ship.indexes:
+                return ship.size
+        return 0  # Trả về 0 nếu không tìm thấy tàu
     
     def make_move(self, i):
+        self.last_shot = i  # Cập nhật vị trí bắn cuối cùng
         player = self.player1 if self.player1_turn else self.player2
         opponent = self.player2 if self.player1_turn else self.player1
         hit = False
@@ -416,7 +426,7 @@ class Game:
         Chọn ngẫu nhiên trong các ô đó để bắn
 
 Probabilistic AI là một chiến lược heuristic-based, kết hợp luật game (tàu dài ≥2, không chồng lên nhau) với heat-map xác suất và tăng cường dữ kiện "H" để đưa ra nước đi tối ưu.
--> Nó không học, không dự đoán thống kê, mà là một cách tính toán xác suất “giả định thông minh” từ toàn bộ trạng thái bàn cờ.
+-> Nó không học, không dự đoán thống kê, mà là một cách tính toán xác suất "giả định thông minh" từ toàn bộ trạng thái bàn cờ.
 
 """
 

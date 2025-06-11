@@ -9,6 +9,9 @@ from engine import Game
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from scipy.stats import gaussian_kde
+import psutil
+import os
+from datetime import datetime
 
 # Danh sách các AI hiện có
 AI_MAP = {
@@ -17,6 +20,40 @@ AI_MAP = {
     "proba": lambda game: game.probabilistic_ai()
 }
 
+class ResourceMonitor:
+    def __init__(self):
+        self.process = psutil.Process(os.getpid())
+        self.start_time = None
+        self.start_memory = None
+        self.move_times = []
+        self.peak_memory = 0
+        self.current_memory = 0
+        
+    def start_monitoring(self):
+        """Bắt đầu theo dõi tài nguyên"""
+        self.start_time = time.time()
+        self.start_memory = self.process.memory_info().rss / 1024 / 1024  # Convert to MB
+        self.current_memory = self.start_memory
+        
+    def record_move(self):
+        """Ghi lại thời gian và bộ nhớ cho một lượt đi"""
+        move_time = time.time() - self.start_time
+        self.move_times.append(move_time)
+        self.current_memory = self.process.memory_info().rss / 1024 / 1024
+        self.peak_memory = max(self.peak_memory, self.current_memory)
+        self.start_time = time.time()
+        
+    def get_stats(self):
+        """Lấy thống kê về tài nguyên sử dụng"""
+        return {
+            'avg_move_time': statistics.mean(self.move_times) if self.move_times else 0,
+            'max_move_time': max(self.move_times) if self.move_times else 0,
+            'min_move_time': min(self.move_times) if self.move_times else 0,
+            'std_move_time': statistics.stdev(self.move_times) if len(self.move_times) > 1 else 0,
+            'peak_memory': self.peak_memory,
+            'final_memory': self.current_memory,
+            'memory_increase': self.current_memory - self.start_memory
+        }
 
 class AIAnalyzer:
     def __init__(self, ais=None, n_games=100, seeds=None):
@@ -25,32 +62,133 @@ class AIAnalyzer:
         self.seeds = seeds if seeds else [None] * n_games
         self.results = []
         self.summary = defaultdict(dict)
+        self.resource_stats = defaultdict(dict)
+        self.shot_stats = defaultdict(lambda: {
+            'hits': 0,
+            'misses': 0,
+            'shots_to_first_hit': [],
+            'shots_to_sink': defaultdict(list),
+            'wasted_shots': 0,
+            'ship_sink_sequences': []
+        })
 
     def run_match(self, ai1, ai2, seed=None):
         """Chạy một trận đấu đơn giữa hai AI và trả về kết quả."""
         if seed is not None:
-            random.seed(seed)       #Nếu seed được cung cấp, thiết lập seed đó
+            random.seed(seed)
 
-        game = Game(human1=False, human2=False)     #No h vs h
-        start_time = time.time()
+        game = Game(human1=False, human2=False)
+        monitor1 = ResourceMonitor()
+        monitor2 = ResourceMonitor()
+        
+        monitor1.start_monitoring()
+        monitor2.start_monitoring()
+
+        # Khởi tạo theo dõi phát bắn
+        current_ship_hits = 0
+        first_hit_found = False
+        shots_to_first_hit = 0
+        current_ship_size = 0
+        shots_since_first_hit = 0
+        last_hit_position = None
+        sunk_ships = set()
 
         while not game.over:
             if game.player1_turn:
+                prev_search = game.player1.search.copy()  # Lưu trạng thái bảng trước khi bắn
                 AI_MAP[ai1](game)
+                monitor1.record_move()
+                
+                # Phân tích phát bắn
+                if game.last_shot is not None:  # Kiểm tra last_shot không phải None
+                    current_pos = game.last_shot
+                    # Kiểm tra bắn trúng hay trượt
+                    if game.player1.search[current_pos] == "H":
+                        self.shot_stats[ai1]['hits'] += 1
+                        if not first_hit_found:
+                            first_hit_found = True
+                            self.shot_stats[ai1]['shots_to_first_hit'].append(shots_to_first_hit)
+                        current_ship_hits += 1
+                        last_hit_position = current_pos
+                    else:
+                        self.shot_stats[ai1]['misses'] += 1
+                        
+                    # Kiểm tra tàu bị chìm
+                    if game.player1.search[current_pos] == "S":
+                        ship_size = game.get_ship_size(2, current_pos)
+                        self.shot_stats[ai1]['shots_to_sink'][ship_size].append(shots_since_first_hit)
+                        sunk_ships.add(current_pos)
+                        current_ship_hits = 0
+                        first_hit_found = False
+                        shots_since_first_hit = 0
+                        
+                    # Kiểm tra phát bắn lãng phí
+                    if self.is_wasted_shot(game, current_pos, prev_search, sunk_ships):
+                        self.shot_stats[ai1]['wasted_shots'] += 1
+                        
+                    shots_to_first_hit += 1
+                    if first_hit_found:
+                        shots_since_first_hit += 1
             else:
+                prev_search = game.player2.search.copy()
                 AI_MAP[ai2](game)
+                monitor2.record_move()
+                
+                # Tương tự cho AI2
+                if game.last_shot is not None:  # Kiểm tra last_shot không phải None
+                    current_pos = game.last_shot
+                    if game.player2.search[current_pos] == "H":
+                        self.shot_stats[ai2]['hits'] += 1
+                        if not first_hit_found:
+                            first_hit_found = True
+                            self.shot_stats[ai2]['shots_to_first_hit'].append(shots_to_first_hit)
+                        current_ship_hits += 1
+                        last_hit_position = current_pos
+                    else:
+                        self.shot_stats[ai2]['misses'] += 1
+                        
+                    if game.player2.search[current_pos] == "S":
+                        ship_size = game.get_ship_size(1, current_pos)
+                        self.shot_stats[ai2]['shots_to_sink'][ship_size].append(shots_since_first_hit)
+                        sunk_ships.add(current_pos)
+                        current_ship_hits = 0
+                        first_hit_found = False
+                        shots_since_first_hit = 0
+                        
+                    if self.is_wasted_shot(game, current_pos, prev_search, sunk_ships):
+                        self.shot_stats[ai2]['wasted_shots'] += 1
+                        
+                    shots_to_first_hit += 1
+                    if first_hit_found:
+                        shots_since_first_hit += 1
 
-        end_time = time.time()
-        match_time = end_time - start_time
+        # Lưu thống kê tài nguyên
+        self.resource_stats[ai1] = monitor1.get_stats()
+        self.resource_stats[ai2] = monitor2.get_stats()
 
-        return {  #Trả về kết quả trận đấu
+        return {
             'n_shots': game.n_shots,
             'shots_p1': game.shots_p1,
             'shots_p2': game.shots_p2,
             'winner': ai1 if game.result == 1 else ai2,
             'loser': ai2 if game.result == 1 else ai1,
-            'time': match_time
+            'time': time.time() - monitor1.start_time,
+            'resource_stats_p1': monitor1.get_stats(),
+            'resource_stats_p2': monitor2.get_stats()
         }
+
+    def is_wasted_shot(self, game, pos, prev_search, sunk_ships):
+        """Kiểm tra xem một phát bắn có phải là lãng phí không."""
+        # Kiểm tra bắn vào ô đã bắn
+        if prev_search[pos] != "U":
+            return True
+            
+        # Kiểm tra bắn xung quanh tàu đã chìm
+        for sunk_pos in sunk_ships:
+            if abs(pos - sunk_pos) <= 1 or abs(pos - sunk_pos) == 10:
+                return True
+                
+        return False
 
     def run_tournament(self):
         """Chạy một giải đấu giữa tất cả các cặp AI."""
@@ -90,6 +228,8 @@ class AIAnalyzer:
                 'wins': 0,
                 'shots': [],
                 'times': [],
+                'move_times': [],
+                'memory_usage': [],
                 'opponents': defaultdict(lambda: {'wins': 0, 'games': 0})
             }
 
@@ -99,7 +239,7 @@ class AIAnalyzer:
             winner = match['winner']
 
             # Cập nhật tóm tắt cho cả hai AI
-            for ai in [ai1, ai2]:
+            for ai, stats in [(ai1, match['resource_stats_p1']), (ai2, match['resource_stats_p2'])]:
                 self.summary[ai]['games'] += 1
                 if ai == winner:
                     self.summary[ai]['wins'] += 1
@@ -110,7 +250,9 @@ class AIAnalyzer:
                 else:
                     self.summary[ai]['shots'].append(match['shots_p2'])
 
-                self.summary[ai]['times'].append(match['time'] / 2)  # Thời gian ước tính cho mỗi AI
+                self.summary[ai]['times'].append(match['time'] / 2)
+                self.summary[ai]['move_times'].append(stats['avg_move_time'])
+                self.summary[ai]['memory_usage'].append(stats['peak_memory'])
 
             # Cập nhật thống kê đối đầu
             opponent = ai2 if winner == ai1 else ai1
@@ -122,6 +264,8 @@ class AIAnalyzer:
         for ai in self.ais:
             stats = self.summary[ai]
             shots = stats['shots']
+            move_times = stats['move_times']
+            memory_usage = stats['memory_usage']
 
             stats['win_rate'] = stats['wins'] / stats['games'] if stats['games'] > 0 else 0
             stats['avg_shots'] = sum(shots) / len(shots) if shots else 0
@@ -130,6 +274,14 @@ class AIAnalyzer:
             stats['max_shots'] = max(shots) if shots else 0
             stats['std_shots'] = statistics.stdev(shots) if len(shots) > 1 else 0
             stats['avg_time'] = sum(stats['times']) / len(stats['times']) if stats['times'] else 0
+            
+            # Thống kê về tài nguyên
+            stats['avg_move_time'] = sum(move_times) / len(move_times) if move_times else 0
+            stats['max_move_time'] = max(move_times) if move_times else 0
+            stats['min_move_time'] = min(move_times) if move_times else 0
+            stats['std_move_time'] = statistics.stdev(move_times) if len(move_times) > 1 else 0
+            stats['avg_memory'] = sum(memory_usage) / len(memory_usage) if memory_usage else 0
+            stats['max_memory'] = max(memory_usage) if memory_usage else 0
 
             # Tính tỷ lệ thắng trước mỗi đối thủ
             for opp, data in stats['opponents'].items():
@@ -144,7 +296,7 @@ class AIAnalyzer:
 
         # In bảng thống kê chính
         print("\n📊 OVERALL PERFORMANCE:")
-        header = ["AI", "Games", "Wins", "Win Rate", "Avg Shots", "Std Dev", "Avg Time(s)"]
+        header = ["AI", "Games", "Wins", "Win Rate", "Avg Shots", "Avg Time/Move(ms)", "Max Time/Move(ms)", "Avg Memory(MB)"]
         rows = []
 
         for ai in sorted_ais:
@@ -155,8 +307,9 @@ class AIAnalyzer:
                 stats['wins'],
                 f"{stats['win_rate']:.1%}",
                 f"{stats['avg_shots']:.1f}",
-                f"{stats['std_shots']:.2f}",
-                f"{stats['avg_time']:.3f}"
+                f"{stats['avg_move_time']*1000:.1f}",
+                f"{stats['max_move_time']*1000:.1f}",
+                f"{stats['avg_memory']:.1f}"
             ])
 
         self._print_table(header, rows)
@@ -182,19 +335,13 @@ class AIAnalyzer:
         print("\n🏆 BEST AI BY CATEGORY:")
         best_win_rate = max(self.ais, key=lambda ai: self.summary[ai]['win_rate'])
         best_avg_shots = min(self.ais, key=lambda ai: self.summary[ai]['avg_shots'])
+        best_avg_time = min(self.ais, key=lambda ai: self.summary[ai]['avg_move_time'])
+        best_memory = min(self.ais, key=lambda ai: self.summary[ai]['avg_memory'])
 
         print(f"- Highest Win Rate: {best_win_rate.upper()} ({self.summary[best_win_rate]['win_rate']:.1%})")
         print(f"- Lowest Avg Shots: {best_avg_shots.upper()} ({self.summary[best_avg_shots]['avg_shots']:.1f})")
-
-        # Đề xuất tổng thể (chấm điểm đơn giản: 2 * xếp hạng tỷ lệ thắng + xếp hạng số lượt bắn trung bình)
-        win_rate_ranking = {ai: i for i, ai in
-                            enumerate(sorted(self.ais, key=lambda x: self.summary[x]['win_rate'], reverse=True))}
-        shot_ranking = {ai: i for i, ai in enumerate(sorted(self.ais, key=lambda x: self.summary[x]['avg_shots']))}
-
-        scores = {ai: 2 * win_rate_ranking[ai] + shot_ranking[ai] for ai in self.ais}
-        best_overall = min(scores, key=scores.get)
-
-        print(f"\n🎖️ OVERALL BEST AI: {best_overall.upper()}")
+        print(f"- Fastest Avg Move Time: {best_avg_time.upper()} ({self.summary[best_avg_time]['avg_move_time']*1000:.1f}ms)")
+        print(f"- Lowest Memory Usage: {best_memory.upper()} ({self.summary[best_memory]['avg_memory']:.1f}MB)")
 
     def _print_table(self, header, rows):
         """In một bảng đã được định dạng."""
@@ -212,24 +359,23 @@ class AIAnalyzer:
 
     def plot_results(self):
         """Tạo các biểu đồ trực quan hóa cho kết quả giải đấu."""
-        # Tạo hình với các biểu đồ con và điều chỉnh khoảng cách
-        fig = plt.figure(figsize=(15, 10))
+        fig = plt.figure(figsize=(15, 12))
         plt.subplots_adjust(
-            left=0.1,      # Khoảng cách từ lề trái
-            right=0.9,     # Khoảng cách từ lề phải
-            bottom=0.1,    # Khoảng cách từ lề dưới
-            top=0.9,       # Khoảng cách từ lề trên
-            wspace=0.3,    # Khoảng cách ngang giữa các subplot
-            hspace=0.4     # Khoảng cách dọc giữa các subplot
+            left=0.1,
+            right=0.9,
+            bottom=0.1,
+            top=0.9,
+            wspace=0.3,
+            hspace=0.4
         )
 
         # 1. So sánh tỷ lệ thắng
-        ax1 = plt.subplot(2, 3, 1)
+        ax1 = plt.subplot(3, 2, 1)
         sorted_ais = sorted(self.ais, key=lambda ai: self.summary[ai]['win_rate'])
         win_rates = [self.summary[ai]['win_rate'] for ai in sorted_ais]
         bars = ax1.barh([ai.upper() for ai in sorted_ais], win_rates, color='skyblue')
-        ax1.set_title('Win Rates', pad=20)  # Thêm padding cho tiêu đề
-        ax1.set_xlabel('Win Rate', labelpad=10)  # Thêm padding cho nhãn trục
+        ax1.set_title('Win Rates', pad=20)
+        ax1.set_xlabel('Win Rate', labelpad=10)
         ax1.set_xlim(0, 1)
         for bar in bars:
             width = bar.get_width()
@@ -237,7 +383,7 @@ class AIAnalyzer:
                      va='center')
 
         # 2. So sánh số lượt bắn trung bình
-        ax2 = plt.subplot(2, 3, 2)
+        ax2 = plt.subplot(3, 2, 2)
         sorted_by_shots = sorted(self.ais, key=lambda ai: self.summary[ai]['avg_shots'])
         avg_shots = [self.summary[ai]['avg_shots'] for ai in sorted_by_shots]
         bars = ax2.barh([ai.upper() for ai in sorted_by_shots], avg_shots, color='lightgreen')
@@ -248,55 +394,46 @@ class AIAnalyzer:
             ax2.text(width + 0.5, bar.get_y() + bar.get_height() / 2, f'{width:.1f}',
                      va='center')
 
-        # 3. Biểu đồ hộp của phân phối số lượt bắn
-        ax3 = plt.subplot(2, 3, 3)
-        shot_data = [self.summary[ai]['shots'] for ai in self.ais]
-        ax3.boxplot(shot_data, vert=False, tick_labels=[ai.upper() for ai in self.ais])
-        ax3.set_title('Shot Distribution', pad=20)
-        ax3.set_xlabel('Number of Shots', labelpad=10)
+        # 3. Biểu đồ thời gian trung bình mỗi lượt
+        ax3 = plt.subplot(3, 2, 3)
+        sorted_by_time = sorted(self.ais, key=lambda ai: self.summary[ai]['avg_move_time'])
+        avg_times = [self.summary[ai]['avg_move_time'] * 1000 for ai in sorted_by_time]  # Convert to ms
+        bars = ax3.barh([ai.upper() for ai in sorted_by_time], avg_times, color='salmon')
+        ax3.set_title('Average Move Time', pad=20)
+        ax3.set_xlabel('Time (ms)', labelpad=10)
+        for bar in bars:
+            width = bar.get_width()
+            ax3.text(width + 0.1, bar.get_y() + bar.get_height() / 2, f'{width:.1f}',
+                     va='center')
 
-        # 4. Bản đồ nhiệt tỷ lệ thắng
-        ax4 = plt.subplot(2, 3, 4)
-        matrix = np.zeros((len(self.ais), len(self.ais)))
-        for i, ai1 in enumerate(self.ais):
-            for j, ai2 in enumerate(self.ais):
-                if ai1 != ai2:
-                    matrix[i, j] = self.summary[ai1]['opponents'][ai2]['win_rate']
+        # 4. Biểu đồ bộ nhớ sử dụng
+        ax4 = plt.subplot(3, 2, 4)
+        sorted_by_memory = sorted(self.ais, key=lambda ai: self.summary[ai]['avg_memory'])
+        avg_memory = [self.summary[ai]['avg_memory'] for ai in sorted_by_memory]
+        bars = ax4.barh([ai.upper() for ai in sorted_by_memory], avg_memory, color='lightblue')
+        ax4.set_title('Average Memory Usage', pad=20)
+        ax4.set_xlabel('Memory (MB)', labelpad=10)
+        for bar in bars:
+            width = bar.get_width()
+            ax4.text(width + 0.1, bar.get_y() + bar.get_height() / 2, f'{width:.1f}',
+                     va='center')
 
-        im = ax4.imshow(matrix, cmap='YlGnBu')
-        ax4.set_title('Win Rate Matrix', pad=20)
-        ax4.set_xticks(range(len(self.ais)))
-        ax4.set_yticks(range(len(self.ais)))
-        ax4.set_xticklabels([ai.upper() for ai in self.ais], rotation=45)  # Xoay nhãn 45 độ
-        ax4.set_yticklabels([ai.upper() for ai in self.ais])
-        plt.colorbar(im, ax=ax4, pad=0.1)  # Thêm padding cho colorbar
-
-        # Thêm chú thích văn bản vào bản đồ nhiệt
-        for i in range(len(self.ais)):
-            for j in range(len(self.ais)):
-                if i != j:
-                    text = f"{matrix[i, j]:.1%}"
-                else:
-                    text = "--"
-                ax4.text(j, i, text, ha="center", va="center", color="black")
-
-        # 5. Biểu đồ tần suất phân phối số lượt bắn (mượt)
-        ax5 = plt.subplot(2, 3, (5, 6))
+        # 5. Biểu đồ phân phối thời gian
+        ax5 = plt.subplot(3, 2, (5, 6))
         for ai in self.ais:
-            shots = self.summary[ai]['shots']
-            if len(shots) > 1:
-                kde = gaussian_kde(shots, bw_method=0.3)
-                x_grid = np.linspace(min(shots), max(shots), 200)
-                ax5.plot(x_grid, kde(x_grid) * len(shots), label=ai.upper())
+            move_times = self.summary[ai]['move_times']
+            if len(move_times) > 1:
+                kde = gaussian_kde(move_times, bw_method=0.3)
+                x_grid = np.linspace(min(move_times), max(move_times), 200)
+                ax5.plot(x_grid * 1000, kde(x_grid) * len(move_times), label=ai.upper())
             else:
-                ax5.plot(shots, [1], 'o', label=ai.upper())
+                ax5.plot([t * 1000 for t in move_times], [1], 'o', label=ai.upper())
 
-        ax5.set_title('Shot Distribution (Smoothed)', pad=20)
-        ax5.set_xlabel('Number of Shots', labelpad=10)
+        ax5.set_title('Move Time Distribution', pad=20)
+        ax5.set_xlabel('Time (ms)', labelpad=10)
         ax5.set_ylabel('Frequency', labelpad=10)
-        ax5.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # Di chuyển legend ra ngoài
+        ax5.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
-        # Điều chỉnh layout tổng thể
         plt.tight_layout()
         plt.show()
 
@@ -326,6 +463,123 @@ class AIAnalyzer:
 
         print(f"\n💾 Results saved to {filename}_matches.csv and {filename}_summary.csv")
 
+    def analyze_probabilistic_ai(self):
+        """Phân tích chi tiết về hiệu suất của AI probabilistic."""
+        if 'proba' not in self.ais:
+            print("Probabilistic AI không có trong danh sách AI được phân tích")
+            return
+
+        stats = self.summary['proba']
+        shot_stats = self.shot_stats['proba']
+        print("\n====== PHÂN TÍCH CHI TIẾT AI PROBABILISTIC ======")
+        
+        # 1. Hiệu suất tổng thể
+        print("\n🎯 HIỆU SUẤT TỔNG THỂ:")
+        print(f"- Tỷ lệ thắng: {stats['win_rate']:.1%}")
+        print(f"- Số lượt bắn trung bình: {stats['avg_shots']:.1f}")
+        print(f"- Độ lệch chuẩn số lượt bắn: {stats['std_shots']:.2f}")
+        
+        # 2. Phân tích tài nguyên
+        print("\n💻 PHÂN TÍCH TÀI NGUYÊN:")
+        print(f"- Thời gian trung bình mỗi lượt: {stats['avg_move_time']*1000:.1f}ms")
+        print(f"- Thời gian tối đa mỗi lượt: {stats['max_move_time']*1000:.1f}ms")
+        print(f"- Bộ nhớ trung bình sử dụng: {stats['avg_memory']:.1f}MB")
+        print(f"- Bộ nhớ tối đa sử dụng: {stats['max_memory']:.1f}MB")
+        
+        # 3. Phân tích hiệu quả bắn
+        print("\n🎯 PHÂN TÍCH HIỆU QUẢ BẮN:")
+        total_shots = shot_stats['hits'] + shot_stats['misses']
+        hit_ratio = shot_stats['hits'] / total_shots if total_shots > 0 else 0
+        print(f"- Tỷ lệ bắn trúng: {hit_ratio:.1%}")
+        print(f"- Số phát bắn trúng: {shot_stats['hits']}")
+        print(f"- Số phát bắn trượt: {shot_stats['misses']}")
+        
+        # Số phát bắn đến lần trúng đầu tiên
+        if shot_stats['shots_to_first_hit']:
+            avg_shots_to_first_hit = statistics.mean(shot_stats['shots_to_first_hit'])
+            print(f"- Số phát bắn trung bình đến lần trúng đầu tiên: {avg_shots_to_first_hit:.1f}")
+        
+        # Số phát bắn để đánh chìm tàu
+        print("\nSố phát bắn trung bình để đánh chìm tàu (sau khi trúng lần đầu):")
+        for ship_size, shots in shot_stats['shots_to_sink'].items():
+            if shots:
+                avg_shots = statistics.mean(shots)
+                print(f"- Tàu {ship_size} ô: {avg_shots:.1f} phát")
+        
+        # Phân tích phát bắn lãng phí
+        wasted_ratio = shot_stats['wasted_shots'] / total_shots if total_shots > 0 else 0
+        print(f"\n- Số phát bắn lãng phí: {shot_stats['wasted_shots']} ({wasted_ratio:.1%} tổng số phát)")
+        
+        # 4. So sánh với các AI khác
+        print("\n📊 SO SÁNH VỚI CÁC AI KHÁC:")
+        other_ais = [ai for ai in self.ais if ai != 'proba']
+        
+        # Tỷ lệ thắng
+        win_rates = {ai: self.summary[ai]['win_rate'] for ai in other_ais}
+        win_rate_improvement = {}
+        for ai, rate in win_rates.items():
+            if rate > 0:
+                win_rate_improvement[ai] = (stats['win_rate'] - rate) / rate * 100
+            else:
+                win_rate_improvement[ai] = float('inf') if stats['win_rate'] > 0 else 0
+        
+        print("\nTỷ lệ thắng so với các AI khác:")
+        for ai, improvement in win_rate_improvement.items():
+            if improvement == float('inf'):
+                print(f"- So với {ai.upper()}: +∞% (AI khác không thắng trận nào)")
+            else:
+                print(f"- So với {ai.upper()}: {improvement:+.1f}%")
+            
+        # So sánh hiệu quả bắn
+        print("\nHiệu quả bắn so với các AI khác:")
+        for ai in other_ais:
+            other_total = self.shot_stats[ai]['hits'] + self.shot_stats[ai]['misses']
+            if other_total > 0:
+                other_hit_ratio = self.shot_stats[ai]['hits'] / other_total
+                hit_ratio_diff = (hit_ratio - other_hit_ratio) / other_hit_ratio * 100 if other_hit_ratio > 0 else float('inf')
+                print(f"- Tỷ lệ bắn trúng so với {ai.upper()}: {hit_ratio_diff:+.1f}%")
+                
+                other_wasted = self.shot_stats[ai]['wasted_shots'] / other_total
+                wasted_diff = (wasted_ratio - other_wasted) / other_wasted * 100 if other_wasted > 0 else float('inf')
+                print(f"- Tỷ lệ bắn lãng phí so với {ai.upper()}: {wasted_diff:+.1f}%")
+            else:
+                print(f"- Không có dữ liệu bắn cho {ai.upper()}")
+            
+        # 5. Đánh giá tổng thể
+        print("\n📈 ĐÁNH GIÁ TỔNG THỂ:")
+        strengths = []
+        if stats['win_rate'] > 0.7:
+            strengths.append("Tỷ lệ thắng rất cao (>70%)")
+        if stats['avg_shots'] < 50:
+            strengths.append("Số lượt bắn trung bình thấp (<50)")
+        if stats['std_shots'] < 10:
+            strengths.append("Độ ổn định cao (độ lệch chuẩn thấp)")
+        if hit_ratio > 0.4:
+            strengths.append(f"Tỷ lệ bắn trúng cao ({hit_ratio:.1%})")
+        if wasted_ratio < 0.1:
+            strengths.append(f"Tỷ lệ bắn lãng phí thấp ({wasted_ratio:.1%})")
+            
+        print("\nĐiểm mạnh:")
+        for strength in strengths:
+            print(f"- {strength}")
+            
+        print("\nSự đánh đổi:")
+        print(f"- Thời gian tính toán cao hơn: {stats['avg_move_time']*1000:.1f}ms/lượt")
+        print(f"- Sử dụng nhiều bộ nhớ hơn: {stats['avg_memory']:.1f}MB")
+        
+        # 6. Kết luận
+        print("\n🎯 KẾT LUẬN:")
+        if stats['win_rate'] > 0.7 and hit_ratio > 0.4 and wasted_ratio < 0.1:
+            print("AI Probabilistic thể hiện sự vượt trội rõ rệt về mặt hiệu suất:")
+            print("- Tỷ lệ thắng cao và ổn định")
+            print("- Hiệu quả bắn cao (tỷ lệ trúng cao, lãng phí thấp)")
+            print("- Chiến lược tìm kiếm và săn-diệt hiệu quả")
+            print("\nTuy nhiên, sự vượt trội này đi kèm với chi phí tài nguyên cao hơn:")
+            print(f"- Thời gian tính toán: {stats['avg_move_time']*1000:.1f}ms/lượt")
+            print(f"- Bộ nhớ sử dụng: {stats['avg_memory']:.1f}MB")
+        else:
+            print("AI Probabilistic có hiệu suất tốt nhưng chưa thực sự vượt trội")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Enhanced AI comparison for Battleship")
@@ -350,6 +604,8 @@ def main():
 
     if not args.no_plot:
         analyzer.plot_results()
+
+    analyzer.analyze_probabilistic_ai()
 
 
 if __name__ == "__main__":
